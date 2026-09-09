@@ -12,7 +12,7 @@
 insert into public.users (id, clerk_user_id, role)
 values (
   '00000000-0000-4000-8000-0000000000a1',
-  'user_2xxxxxxxxxxxxxxx',
+  'user_3J58jb950XErRg7SFteXUbjPjE0',
   'admin'
 )
 on conflict (clerk_user_id) do nothing;

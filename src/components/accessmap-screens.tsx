@@ -1,5 +1,6 @@
+import { useClerk, useSSO, useUser } from '@clerk/clerk-expo';
 import { Image } from 'expo-image';
-import { router, type Href } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useState } from 'react';
 import {
   Pressable,
@@ -10,7 +11,24 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import EmptyState from '@/components/ui/empty-state';
+import LoadingState from '@/components/ui/loading-state';
 import { DesignColors as C, DesignType as T } from '@/constants/design-tokens';
+import {
+  CATEGORY_DETAILS,
+  CATEGORY_ICONS,
+  CATEGORY_LABELS,
+  CATEGORY_SHORT_LABELS,
+  FEATURE_DETAILS,
+  FEATURE_ICONS,
+  FEATURE_LABELS,
+  FEATURE_ORDER,
+} from '@/constants/catalog';
+import { useAccessibilityFilter } from '@/hooks/useAccessibilityFilter';
+import { usePlace } from '@/hooks/usePlace';
+import { usePlaces } from '@/hooks/usePlaces';
+import { useRole } from '@/contexts/role-context';
+import type { FeatureType, Place, PlaceCategory } from '@/types';
 
 const tabsRoute = '/(tabs)' as Href;
 
@@ -22,7 +40,27 @@ const photos = {
   avatar: require('@/assets/images/clean_friendly_profile_portrait_avatar_of_a_filipino_civic_volunteer_with.png'),
 };
 
-type Place = {
+const fallbackPhotoFor: Record<PlaceCategory, number> = {
+  hospital: photos.hospital,
+  health_center: photos.health,
+  government: photos.hall,
+  school: photos.school,
+  mall: photos.health,
+  church: photos.hall,
+  park: photos.health,
+};
+
+function photoSource(place: Place) {
+  return place.photo_url ? { uri: place.photo_url } : fallbackPhotoFor[place.category];
+}
+
+function availableFeatureLabels(place: Place): string[] {
+  return (place.accessibility_features ?? [])
+    .filter((feature) => feature.status === 'available')
+    .map((feature) => FEATURE_LABELS[feature.feature_type]);
+}
+
+type MockPlace = {
   id: string;
   name: string;
   category: string;
@@ -31,7 +69,7 @@ type Place = {
   features: string[];
 };
 
-const places: Place[] = [
+const mockPlaces: MockPlace[] = [
   {
     id: 'hospital',
     name: 'Cainta Municipal Hospital - San Isidro Health Annex',
@@ -110,7 +148,7 @@ function Button({
   );
 }
 
-function Status({ children, available = true }: { children: string; available?: boolean }) {
+function Status({ children, available = true }: { children: React.ReactNode; available?: boolean }) {
   return (
     <View style={[styles.status, available ? styles.available : styles.unavailable]}>
       <Text style={styles.statusMark}>{available ? '✓' : '×'}</Text>
@@ -121,6 +159,27 @@ function Status({ children, available = true }: { children: string; available?: 
 }
 
 export function LoginScreen() {
+  const { startSSOFlow } = useSSO();
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
+
+  const onSignIn = async () => {
+    if (signingIn) return;
+    setSigningIn(true);
+    setSignInError(null);
+    try {
+      const { createdSessionId, setActive } = await startSSOFlow({ strategy: 'oauth_google' });
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+      }
+    } catch (error) {
+      console.warn('Google sign-in failed', error);
+      setSignInError('Sign in could not be completed. Please try again.');
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
   return (
     <Screen>
       <View style={styles.loginHero}>
@@ -156,7 +215,8 @@ export function LoginScreen() {
           <Text style={styles.body}>Empowering persons with disabilities, senior citizens, and companions with verified physical accessibility features.</Text>
         </View>
       </View>
-      <Button onPress={() => router.replace(tabsRoute)}>ⓖ  Continue with Google</Button>
+      <Button onPress={onSignIn}>{signingIn ? '⏳  Signing in…' : 'ⓖ  Continue with Google'}</Button>
+      {signInError ? <Text style={styles.errorText}>{signInError}</Text> : null}
       <Text style={styles.centerLabel}>▣  No password needed • Secure civic SSO</Text>
       <Text style={styles.legal}>By continuing, you agree to our <Text style={styles.underline}>Terms of Service</Text> and <Text style={styles.underline}>Privacy Policy</Text>.</Text>
       <Text style={styles.centerLabel}>⌖  Built for the community of San Isidro, Cainta</Text>
@@ -175,15 +235,16 @@ function SearchBar({ placeholder }: { placeholder: string }) {
 }
 
 function PlaceCard({ place }: { place: Place }) {
+  const labels = availableFeatureLabels(place);
   return (
     <View style={styles.placeCard}>
       <View style={styles.placeTop}>
-        <Image source={place.photo} style={styles.placePhoto} />
+        <Image source={photoSource(place)} style={styles.placePhoto} />
         <View style={styles.placeInfo}>
           <Text style={styles.placeName} numberOfLines={1}>{place.name}</Text>
-          <View style={styles.categoryPill}><Text style={styles.categoryText}>{place.category}</Text></View>
+          <View style={styles.categoryPill}><Text style={styles.categoryText}>{CATEGORY_SHORT_LABELS[place.category]}</Text></View>
           <Text style={styles.address} numberOfLines={1}>⌖  {place.address}</Text>
-          <Text style={styles.featureLine}>{place.features.join(', ')}{place.features.length < 3 ? '' : ', +1 more'}</Text>
+          <Text style={styles.featureLine}>{labels.length > 0 ? labels.slice(0, 2).join(', ') + (labels.length > 2 ? ', +1 more' : '') : 'No verified features yet'}</Text>
         </View>
         <Text style={styles.bookmark}>♧</Text>
       </View>
@@ -196,23 +257,41 @@ function PlaceCard({ place }: { place: Place }) {
 }
 
 export function HomeScreen() {
+  const [activeCategory, setActiveCategory] = useState<PlaceCategory | null>(null);
+  const { places, loading, error } = usePlaces(activeCategory ?? undefined);
+
+  const chips: Array<{ value: PlaceCategory; label: string }> = [
+    { value: 'hospital', label: '⊞  ' + CATEGORY_SHORT_LABELS.hospital + 's' },
+    { value: 'health_center', label: '♙  ' + CATEGORY_SHORT_LABELS.health_center + 's' },
+    { value: 'government', label: '▤  ' + CATEGORY_SHORT_LABELS.government },
+  ];
+
   return (
     <Screen>
       <Header />
       <View style={styles.homeTop}>
         <SearchBar placeholder="Search hospitals, health centers, or offices" />
         <View style={styles.chips}>
-          {['Hospitals', 'Health Centers', 'Government'].map((item, index) => (
-            <Pressable key={item} style={[styles.chip, index === 0 && styles.activeChip]}>
-              <Text style={[styles.chipText, index === 0 && styles.activeChipText]}>{index === 0 ? '⊞  ' : '▤  '}{item}</Text>
+          {chips.map((chip) => (
+            <Pressable
+              key={chip.value}
+              accessibilityLabel={`Filter by ${chip.label}`}
+              accessibilityRole="button"
+              style={[styles.chip, activeCategory === chip.value && styles.activeChip]}
+              onPress={() => setActiveCategory(activeCategory === chip.value ? null : chip.value)}
+            >
+              <Text style={[styles.chipText, activeCategory === chip.value && styles.activeChipText]}>{chip.label}</Text>
             </Pressable>
           ))}
         </View>
         <View style={styles.rowBetween}>
           <Text style={styles.sectionTitle}>Public Facilities in San Isidro</Text>
-          <Text style={styles.greenLabel}>12 locations verified</Text>
+          <Text style={styles.greenLabel}>{loading ? 'Loading…' : `${places.length} locations verified`}</Text>
         </View>
-        {places.map((place) => <PlaceCard key={place.id} place={place} />)}
+        {error ? <EmptyState title="Could not load facilities" message={error} /> : null}
+        {!error && loading ? <LoadingState label="Loading facilities…" /> : null}
+        {!error && !loading && places.length === 0 ? <EmptyState message="No facilities found for this category in San Isidro." /> : null}
+        {!error && !loading ? places.map((place) => <PlaceCard key={place.id} place={place} />) : null}
         <Text style={styles.sectionTitle}>Browse by Category</Text>
         <View style={styles.categoryGrid}>
           {['Schools & DepEd Centers', 'Shopping Malls & Markets', 'Churches & Parishes', 'Public Parks & Plazas'].map((item) => (
@@ -230,13 +309,11 @@ export function HomeScreen() {
 
 export function FilterScreen() {
   const [toggles, setToggles] = useState([true, true, false, true, true]);
-  const labels = [
-    ['♿', 'Ramps & Step-Free Access', 'Gentle slope ramps at main entrance and corridors'],
-    ['♟', 'Accessible Restroom / PWD CR', 'Grab bars, minimum 90cm door clearance, wheelchair turn space'],
-    ['▣', 'Elevator / Lift Access', 'Braille buttons, audible floor indicators, multi-floor access'],
-    ['P', 'Accessible PWD Parking', 'Designated wide parking spaces near main entrance'],
-    ['▥', 'Accessible Wide Entrance', 'Automatic or lever-handle doors, threshold ≤12mm'],
-  ];
+  const [category, setCategory] = useState<PlaceCategory | 'all'>('all');
+  const activeTypes = FEATURE_ORDER.filter((_, index) => toggles[index]);
+  const { places, loading, error } = useAccessibilityFilter(activeTypes, category === 'all' ? undefined : category);
+  const topMatch = places[0];
+
   return (
     <Screen>
       <Header />
@@ -246,13 +323,16 @@ export function FilterScreen() {
         <Pressable style={styles.closeButton}><Text style={styles.closeText}>×</Text></Pressable>
       </View>
       <Text style={styles.body}>Show only public places in San Isidro that have the selected accessibility provisions verified.</Text>
-      <View style={styles.filterSummary}><Text style={styles.filterSummaryText}>◉  Admin-Verified Listings</Text><Text style={styles.greenLabel}>4 of 5 Active</Text></View>
-      {labels.map(([icon, title, detail], index) => (
-        <View style={styles.filterRow} key={title}>
-          <Text style={styles.filterIcon}>{icon}</Text>
-          <View style={styles.flex}><Text style={styles.filterTitle}>{title}</Text><Text style={styles.body}>{detail}</Text></View>
+      <View style={styles.filterSummary}><Text style={styles.filterSummaryText}>◉  Admin-Verified Listings</Text><Text style={styles.greenLabel}>{activeTypes.length} of 5 Active</Text></View>
+      {FEATURE_ORDER.map((featureType, index) => (
+        <View style={styles.filterRow} key={featureType}>
+          <Text style={styles.filterIcon}>{FEATURE_ICONS[featureType]}</Text>
+          <View style={styles.flex}><Text style={styles.filterTitle}>{FEATURE_LABELS[featureType]}</Text><Text style={styles.body}>{FEATURE_DETAILS[featureType]}</Text></View>
           <Pressable
             style={[styles.toggle, toggles[index] && styles.toggleOn]}
+            accessibilityLabel={`Toggle ${FEATURE_LABELS[featureType]}`}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: toggles[index] }}
             onPress={() => setToggles((current) => current.map((value, i) => i === index ? !value : value))}
           >
             <View style={[styles.toggleThumb, toggles[index] && styles.toggleThumbOn]} />
@@ -261,12 +341,25 @@ export function FilterScreen() {
       ))}
       <Text style={styles.sectionTitle}>Facility Category</Text>
       <View style={styles.categoryGrid}>
-        {['All Facilities', 'Hospitals Only', 'Health Centers', 'Gov Offices'].map((item, index) => (
-          <Pressable key={item} style={[styles.smallChoice, index === 0 && styles.selectedChoice]}><Text style={[styles.choiceText, index === 0 && styles.selectedChoiceText]}>{item}</Text></Pressable>
+        {(['all', 'hospital', 'health_center', 'government'] as const).map((item) => (
+          <Pressable
+            key={item}
+            accessibilityLabel={`Show ${item === 'all' ? 'all facilities' : CATEGORY_SHORT_LABELS[item]}`}
+            accessibilityRole="button"
+            style={[styles.smallChoice, category === item && styles.selectedChoice]}
+            onPress={() => setCategory(item)}
+          >
+            <Text style={[styles.choiceText, category === item && styles.selectedChoiceText]}>{item === 'all' ? 'All Facilities' : CATEGORY_SHORT_LABELS[item] + 's Only'}</Text>
+          </Pressable>
         ))}
       </View>
-      <View style={styles.matchBox}><Text style={styles.greenLabel}>Top Verified Match</Text><Text style={styles.cardHeading}>San Isidro Primary Health Center</Text><Text style={styles.body}>Imelda Ave., Cainta • 4 Access Badges</Text></View>
-      <View style={styles.cardActions}><Button secondary>Clear All</Button><Button onPress={() => router.push(tabsRoute)}>✓  Apply Filters (12)</Button></View>
+      {error ? <EmptyState title="Could not load results" message={error} /> : null}
+      {!error && loading ? <LoadingState label="Searching facilities…" /> : null}
+      {!error && !loading && places.length === 0 ? <EmptyState message="No facilities match the selected accessibility filters." /> : null}
+      {!error && !loading && topMatch ? (
+        <View style={styles.matchBox}><Text style={styles.greenLabel}>Top Verified Match</Text><Text style={styles.cardHeading}>{topMatch.name}</Text><Text style={styles.body}>{topMatch.address}{places.length > 1 ? ` • ${places.length} matching facilities` : ''}</Text></View>
+      ) : null}
+      <View style={styles.cardActions}><Button secondary onPress={() => { setToggles([true, true, false, true, true]); setCategory('all'); }}>Clear All</Button><Button onPress={() => router.push(tabsRoute)}>✓  Apply Filters ({loading ? '…' : places.length})</Button></View>
     </Screen>
   );
 }
@@ -285,38 +378,44 @@ export function MapScreen() {
         <View style={[styles.mapPin, { top: 210, left: 85 }]}><Text>♿</Text></View>
         <View style={styles.mapLegend}><Text style={styles.cardHeading}>12 verified locations</Text><Text style={styles.body}>Tap a marker to view access details</Text></View>
       </View>
-      <View style={styles.locationCard}><Text style={styles.sectionTitle}>Nearby verified facilities</Text>{places.slice(0, 3).map((place) => <Pressable key={place.id} style={styles.nearby} onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}><Text style={styles.greenLabel}>●</Text><View style={styles.flex}><Text style={styles.cardHeading}>{place.name}</Text><Text style={styles.body}>{place.address}</Text></View><Text>›</Text></Pressable>)}</View>
+      <View style={styles.locationCard}><Text style={styles.sectionTitle}>Nearby verified facilities</Text>{mockPlaces.slice(0, 3).map((place) => <Pressable key={place.id} style={styles.nearby} onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}><Text style={styles.greenLabel}>●</Text><View style={styles.flex}><Text style={styles.cardHeading}>{place.name}</Text><Text style={styles.body}>{place.address}</Text></View><Text>›</Text></Pressable>)}</View>
     </Screen>
   );
 }
 
 export function PlaceDetailsScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { place, loading, error } = usePlace(id);
+
   return (
     <Screen>
       <Header title="Place Details" back />
-      <Image source={photos.hospital} style={styles.heroImage} />
-      <View style={styles.heroBadge}>♿ Public Service • High Accessibility</View>
-      <View style={styles.detailCard}>
-        <Text style={styles.eyebrow}>HEALTHCARE & PUBLIC HOSPITAL</Text>
-        <Text style={styles.screenTitle}>Cainta Municipal Hospital</Text>
-        <Text style={styles.greenHeading}>San Isidro Health Annex</Text>
-        <View style={styles.openBox}><Text style={styles.cardHeading}>● Open 24/7 • Emergency & Outpatient Services</Text></View>
-        <Text style={styles.body}>⌖  Felix Avenue cor. Parola, Barangay San Isidro, Cainta, Rizal</Text>
-        <Text style={styles.body}>Primary public healthcare facility serving San Isidro residents, featuring dedicated PWD lane, priority senior triage, and fully accessible consultation rooms.</Text>
-      </View>
-      <View style={styles.detailCard}>
-        <View style={styles.rowBetween}><Text style={styles.sectionTitle}>♧ Accessibility Audit</Text><Text style={styles.greenLabel}>Verified On-Site</Text></View>
-        <Text style={styles.body}>Direct factual verification of physical mobility, navigation, and tactile features.</Text>
-        <Status>Step-Free Entrance Ramp</Status>
-        <Status>Accessible Restrooms / CR</Status>
-        <Status>PWD Dedicated Parking</Status>
-        <Status>Wide Automatic Sliding Doors</Status>
-        <Status>Elevator to 2nd Floor Wards</Status>
-        <Status available={false}>Tactile Ground Path to Bus Stop</Status>
-      </View>
-      <View style={styles.detailCard}><Text style={styles.sectionTitle}>▥ Key Desks & Locations</Text>{['PWD & Senior Citizen Priority Desk', 'Malasakit Center & PhilHealth', 'Pharmacy & Dispensary'].map((item) => <View style={styles.listRow} key={item}><Text style={styles.coverageIcon}>⊞</Text><View style={styles.flex}><Text style={styles.cardHeading}>{item}</Text><Text style={styles.body}>Ground floor • Direct step-free corridor</Text></View><Text>›</Text></View>)}</View>
-      <View style={styles.detailCard}><Text style={styles.sectionTitle}>♧ Location & Access Point</Text><View style={styles.mapMockSmall}><Text style={styles.mapRoad}>CAINTA</Text><Text style={[styles.mapRoad, { top: 55, left: 45 }]}>PAROLA ST.</Text><View style={[styles.mapPin, { top: 65, left: 140 }]}><Text>⊞</Text></View></View><Text style={styles.body}>Ramp entrance directly faces Parola St. corner</Text></View>
-      <Button onPress={() => router.push('/directions')}>♿  Get Accessible Route</Button>
+      {error ? <EmptyState title="Could not load this facility" message={error} /> : null}
+      {!error && loading ? <LoadingState label="Loading facility details…" /> : null}
+      {!error && !loading && !place ? <EmptyState message="This facility could not be found." /> : null}
+      {!error && !loading && place ? (
+        <>
+          <Image source={photoSource(place)} style={styles.heroImage} />
+          <View style={styles.heroBadge}>♿ Public Service • Accessible Facility</View>
+          <View style={styles.detailCard}>
+            <Text style={styles.eyebrow}>{CATEGORY_LABELS[place.category].toUpperCase()}</Text>
+            <Text style={styles.screenTitle}>{place.name}</Text>
+            {place.operating_hours ? <View style={styles.openBox}><Text style={styles.cardHeading}>● {place.operating_hours}</Text></View> : null}
+            <Text style={styles.body}>⌖  {place.address}</Text>
+            {place.description ? <Text style={styles.body}>{place.description}</Text> : null}
+          </View>
+          <View style={styles.detailCard}>
+            <View style={styles.rowBetween}><Text style={styles.sectionTitle}>♧ Accessibility Audit</Text><Text style={styles.greenLabel}>Admin-Verified</Text></View>
+            <Text style={styles.body}>Direct factual verification of physical mobility, navigation, and tactile features.</Text>
+            {(place.accessibility_features ?? []).map((feature) => (
+              <Status key={feature.id} available={feature.status === 'available'}>{FEATURE_LABELS[feature.feature_type]}{feature.notes ? ` — ${feature.notes}` : ''}</Status>
+            ))}
+          </View>
+          <View style={styles.detailCard}><Text style={styles.sectionTitle}>▥ Key Desks & Locations</Text>{['PWD & Senior Citizen Priority Desk', 'Malasakit Center & PhilHealth', 'Pharmacy & Dispensary'].map((item) => <View style={styles.listRow} key={item}><Text style={styles.coverageIcon}>⊞</Text><View style={styles.flex}><Text style={styles.cardHeading}>{item}</Text><Text style={styles.body}>Ground floor • Direct step-free corridor</Text></View><Text>›</Text></View>)}</View>
+          <View style={styles.detailCard}><Text style={styles.sectionTitle}>♧ Location & Access Point</Text><View style={styles.mapMockSmall}><Text style={styles.mapRoad}>CAINTA</Text><Text style={[styles.mapRoad, { top: 55, left: 45 }]}>PAROLA ST.</Text><View style={[styles.mapPin, { top: 65, left: 140 }]}><Text>⊞</Text></View></View><Text style={styles.body}>Ramp entrance directly faces {place.address}</Text></View>
+          <Button onPress={() => router.push('/directions')}>♿  Get Accessible Route</Button>
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -342,13 +441,32 @@ export function DirectionsScreen() {
 }
 
 export function ProfileScreen() {
+  const { user } = useUser();
+  const { isAdmin, syncing } = useRole();
+  const { signOut } = useClerk();
+  const displayName = user?.firstName || user?.lastName || '';
+  const userName = [displayName, user?.lastName].filter(Boolean).join(' ') || 'Civic contributor';
+  const email = user?.emailAddresses?.[0]?.emailAddress;
+  const avatar = user?.imageUrl ? { uri: user.imageUrl } : photos.avatar;
+
+  const onSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.warn('Sign out failed', error);
+    }
+  };
+
   return (
     <Screen>
       <Header />
-      <View style={styles.profileHero}><Image source={photos.avatar} style={styles.profileAvatar} /><Text style={styles.screenTitle}>Maria Santos</Text><Text style={styles.body}>Civic accessibility volunteer</Text></View>
+      <View style={styles.profileHero}><Image source={avatar} style={styles.profileAvatar} /><Text style={styles.screenTitle}>{userName}</Text>{email ? <Text style={styles.body}>{email}</Text> : null}<Text style={styles.greenLabel}>{syncing ? 'Syncing role…' : isAdmin ? 'Administrator' : 'Verified community user'}</Text></View>
       <View style={styles.profileCard}><Text style={styles.sectionTitle}>My Access Preferences</Text>{['Show step-free routes first', 'Show accessible restrooms', 'Use large text labels'].map((item) => <View style={styles.preference} key={item}><Text style={styles.cardHeading}>{item}</Text><Text style={styles.greenLabel}>ON</Text></View>)}</View>
       <View style={styles.profileCard}><Text style={styles.sectionTitle}>Saved Places</Text><Text style={styles.body}>Your saved facilities will appear here for quick access.</Text><Button secondary onPress={() => router.push(tabsRoute)}>Browse Place Directory</Button></View>
-      <Pressable style={styles.adminLink} onPress={() => router.push('/admin/index')}><Text style={styles.cardHeading}>Admin Console</Text><Text style={styles.body}>Manage the facility directory</Text><Text>›</Text></Pressable>
+      {isAdmin ? (
+        <Pressable style={styles.adminLink} onPress={() => router.push('/admin')}><Text style={styles.cardHeading}>Admin Console</Text><Text style={styles.body}>Manage the facility directory</Text><Text>›</Text></Pressable>
+      ) : null}
+      <Button secondary onPress={onSignOut}>Sign Out</Button>
     </Screen>
   );
 }
@@ -361,7 +479,7 @@ export function AdminDashboardScreen() {
       <Text style={styles.screenTitle}>Facility Directory</Text>
       <Text style={styles.body}>Manage and maintain field-verified physical accessibility listings for civic public services.</Text>
       <View style={styles.chips}>{['All 12', 'Hospitals 4', 'Health Centers 3'].map((item, index) => <View key={item} style={[styles.chip, index === 0 && styles.activeChip]}><Text style={[styles.chipText, index === 0 && styles.activeChipText]}>{item}</Text></View>)}</View>
-      {places.map((place) => <View style={styles.adminCard} key={place.id}><View style={styles.rowBetween}><Text style={styles.eyebrow}>{place.category.toUpperCase()}</Text><Text style={styles.adminActions}>✎  ▫</Text></View><Text style={styles.cardHeading}>{place.name}</Text><Text style={styles.body}>⌖  {place.address}</Text><Text style={styles.body}>Verified: Today, 08:30 AM</Text><View style={styles.adminTags}>{place.features.map((feature) => <Text style={styles.adminTag} key={feature}>✓ {feature}</Text>)}</View></View>)}
+      {mockPlaces.map((place) => <View style={styles.adminCard} key={place.id}><View style={styles.rowBetween}><Text style={styles.eyebrow}>{place.category.toUpperCase()}</Text><Text style={styles.adminActions}>✎  ▫</Text></View><Text style={styles.cardHeading}>{place.name}</Text><Text style={styles.body}>⌖  {place.address}</Text><Text style={styles.body}>Verified: Today, 08:30 AM</Text><View style={styles.adminTags}>{place.features.map((feature) => <Text style={styles.adminTag} key={feature}>✓ {feature}</Text>)}</View></View>)}
       <Button onPress={() => router.push('/admin/place-form')}>＋  Add New Place</Button>
     </Screen>
   );
@@ -391,14 +509,10 @@ export function PlaceFormScreen() {
 }
 
 export function CategoryScreen() {
-  const categories = [
-    ['⊞', 'Hospitals & Medical', 'Trauma, ER & outpatient with accessible entrances', '4 facilities'],
-    ['♙', 'Barangay Health Centers', 'Maternal care, vaccine centers, step-free access', '3 centers'],
-    ['▤', 'Government & Civic Offices', 'Barangay hall, PhilHealth, senior citizen desks', '6 offices'],
-    ['▧', 'Schools & DepEd Centers', 'Step-free corridors and accessible gates', '4 locations'],
-    ['▦', 'Shopping Malls & Markets', 'Elevator lifts and wide bays', '3 locations'],
-    ['♜', 'Churches & Parishes', 'Nave wheelchair ramps', '5 locations'],
-  ];
+  const { places, loading, error } = usePlaces();
+  const countFor = (category: PlaceCategory) => places.filter((place) => place.category === category).length;
+  const essential: PlaceCategory[] = ['hospital', 'health_center', 'government'];
+  const secondary: PlaceCategory[] = ['school', 'mall', 'church', 'park'];
   return (
     <Screen>
       <Header />
@@ -406,16 +520,19 @@ export function CategoryScreen() {
       <Text style={styles.screenTitle}>Browse Facilities by Category</Text>
       <Text style={styles.body}>Select a category to view accessible entrances, ramps, restrooms, and parking.</Text>
       <SearchBar placeholder="Search facility types, ramps, services" />
+      {error ? <EmptyState title="Could not load categories" message={error} /> : null}
+      {!error && loading ? <LoadingState label="Loading categories…" /> : null}
+      {!error && !loading && places.length === 0 ? <EmptyState message="No facilities are registered yet. Check back soon." /> : null}
       <Text style={styles.sectionTitle}>● Essential Public Services</Text>
-      {categories.slice(0, 3).map(([icon, title, detail, count]) => (
-        <Pressable key={title} style={styles.categoryListCard} onPress={() => router.push(tabsRoute)}>
-          <Text style={styles.categoryLargeIcon}>{icon}</Text>
-          <View style={styles.flex}><Text style={styles.cardHeading}>{title}</Text><Text style={styles.body}>{detail}</Text><Text style={styles.greenLabel}>✓ Step-Free Entry  •  ✓ Accessible Restroom</Text></View>
-          <Text style={styles.countPill}>{count}</Text>
+      {essential.map((category) => (
+        <Pressable key={category} style={styles.categoryListCard} onPress={() => router.push(tabsRoute)}>
+          <Text style={styles.categoryLargeIcon}>{CATEGORY_ICONS[category]}</Text>
+          <View style={styles.flex}><Text style={styles.cardHeading}>{CATEGORY_LABELS[category]}</Text><Text style={styles.body}>{CATEGORY_DETAILS[category]}</Text><Text style={styles.greenLabel}>✓ Step-Free Entry  •  ✓ Accessible Restroom</Text></View>
+          <Text style={styles.countPill}>{countFor(category)}</Text>
         </Pressable>
       ))}
       <Text style={styles.sectionTitle}>Commercial & Community Places</Text>
-      <View style={styles.categoryGrid}>{categories.slice(3).map(([icon, title, detail, count]) => <Pressable key={title} style={styles.categoryCard} onPress={() => router.push(tabsRoute)}><Text style={styles.categoryIcon}>{icon}</Text><Text style={styles.cardHeading}>{title}</Text><Text style={styles.body}>{detail}</Text><Text style={styles.greenLabel}>{count}</Text></Pressable>)}</View>
+      <View style={styles.categoryGrid}>{secondary.map((category) => <Pressable key={category} style={styles.categoryCard} onPress={() => router.push(tabsRoute)}><Text style={styles.categoryIcon}>{CATEGORY_ICONS[category]}</Text><Text style={styles.cardHeading}>{CATEGORY_LABELS[category]}</Text><Text style={styles.body}>{CATEGORY_DETAILS[category]}</Text><Text style={styles.greenLabel}>{countFor(category)} locations</Text></Pressable>)}</View>
     </Screen>
   );
 }
@@ -454,6 +571,7 @@ const styles = StyleSheet.create({
   secondaryButton: { backgroundColor: C.slate },
   secondaryButtonText: { color: C.ink },
   centerLabel: { textAlign: 'center', color: C.muted, fontSize: T['body-md'], fontWeight: '700', paddingVertical: 5 },
+  errorText: { color: C.amber, fontSize: T['body-md'], textAlign: 'center', fontWeight: '700', marginVertical: 10 },
   legal: { color: C.muted, fontSize: T['body-md'], lineHeight: 26, textAlign: 'center', marginVertical: 16 },
   underline: { textDecorationLine: 'underline', color: C.ink },
   homeTop: { gap: 14 },

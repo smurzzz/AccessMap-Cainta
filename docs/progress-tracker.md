@@ -2,7 +2,7 @@
 
 Living checklist. Update as you go — check items off, add dates, note blockers. Mirrors `phase-plan.md`.
 
-**Last updated:** _(fill in date)_
+**Last updated:** 2026-09-09
 
 ## Legend
 - [ ] Not started
@@ -26,30 +26,30 @@ Living checklist. Update as you go — check items off, add dates, note blockers
 - [ ] GitHub branch strategy set up
 
 ## Phase 2A — Static UI + Supabase
-- [ ] Login screen (static)
-- [ ] Home / Place Directory (static)
-- [ ] Browse by Category (static)
-- [ ] Accessibility Filter sheet (static)
-- [ ] Place Details (static)
-- [ ] Map / Location View (static)
-- [ ] Turn-by-Turn Directions (static/mock)
-- [ ] Profile screen (static)
-- [ ] Admin Dashboard (static)
-- [ ] Add/Edit Place form (static)
-- [ ] Supabase project created
-- [ ] Tables created (`places`, `accessibility_features`, `users`)
-- [ ] Sample/seed data loaded
-- [ ] Home connected to real Supabase data
-- [ ] Category browse connected
-- [ ] Filter connected
-- [ ] Place Details connected
+- [x] Login screen (static)
+- [x] Home / Place Directory (static)
+- [x] Browse by Category (static)
+- [x] Accessibility Filter sheet (static)
+- [x] Place Details (static)
+- [x] Map / Location View (static)
+- [x] Turn-by-Turn Directions (static/mock)
+- [x] Profile screen (static)
+- [x] Admin Dashboard (static)
+- [x] Add/Edit Place form (static)
+- [x] Supabase project created
+- [x] Tables created (`places`, `accessibility_features`, `users`)
+- [x] Sample/seed data loaded
+- [x] Home connected to real Supabase data
+- [x] Category browse connected
+- [x] Filter connected
+- [x] Place Details connected
 
 ## Phase 2B — Auth + Maps + Admin CRUD
-- [ ] Clerk project set up, Google-only enabled
-- [ ] Clerk Expo SDK integrated
-- [ ] Login screen wired to real Google Sign-In
-- [ ] Auth guard (unauthenticated → Login only)
-- [ ] Role fetched from `users` table after login
+- [x] Clerk Expo SDK integrated (`@clerk/clerk-expo` v2.20.0, Core 2)
+- [x] Login screen wired to real Google Sign-In (`useSSO` oauth_google)
+- [x] Auth guard (unauthenticated → Login only; authenticated → Home)
+- [x] Role fetched from `users` table after login (via `sync_user` RPC, `RoleProvider` context)
+- [ ] Clerk project set up, Google-only enabled (dashboard step — user must confirm/enable)
 - [ ] Admin entry point built (separate from bottom tabs)
 - [ ] OpenRouteService account + API key created
 - [ ] Map/Location View wired to real coordinates (OpenStreetMap tiles)
@@ -98,3 +98,7 @@ _(Record any scope or tech decisions made mid-project so future-you remembers wh
 | | Switched auth to Google-only via Clerk | Simplicity, security, client request ("direct sa Google") |
 | | Switched DB/backend from MySQL/plain Node.js to Supabase (Postgres) | Convenience, auto REST API, built-in auth-friendly RLS |
 | | Switched maps/directions from Google Maps API to OpenStreetMap + OpenRouteService | Google Maps requires a linked billing/credit card even on the free tier; OSM + ORS need no billing account at all |
+| 2026-09-09 | Filters match places only when **all** selected feature types are available | "Has all selected provisions" is the only sensible reading of the Filter screen copy ("places that have the selected provisions verified"); OR semantics would list a place missing most requested features |
+| 2026-09-09 | Category chips/filters stay on the Filter screen; Home shows category-filtered via the same `usePlaces` hook | Keeps one data source per screen per code-standards.md; no duplicate query logic |
+| 2026-09-09 | Role sync done via `SECURITY DEFINER` RPC `public.sync_user(clerk_user_id)` instead of granting `users` table to the anon role | App signs in with Clerk, so PostgREST has no Supabase JWT `sub` and the anon role has no grant on `users`; RPC inserts role='user' if missing and returns role, without allowing self-set admin |
+| 2026-09-09 | Auth integration kept on `@clerk/clerk-expo` v2 (Core 2) rather than migrating to `@clerk/expo` (Core 3) | Package the user explicitly requested in Phase 0; migration to Core 3 can be a later cleanup |
