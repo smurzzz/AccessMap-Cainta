@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import type { Place, PlaceCategory } from '@/types';
@@ -7,12 +7,16 @@ interface UsePlacesResult {
   places: Place[];
   loading: boolean;
   error: string | null;
+  reload: () => void;
 }
 
 export function usePlaces(category?: PlaceCategory): UsePlacesResult {
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +57,7 @@ export function usePlaces(category?: PlaceCategory): UsePlacesResult {
     return () => {
       cancelled = true;
     };
-  }, [category]);
+  }, [category, attempt]);
 
-  return { places, loading, error };
+  return { places, loading, error, reload };
 }

@@ -33,7 +33,19 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AccessMap uses your photos to attach facility entrance images verified by the administrator."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "AccessMap uses your current location only once to compute walking directions to a selected facility. It is never used for background tracking."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
