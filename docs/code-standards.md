@@ -19,7 +19,7 @@ accessmap/
 │   ├── lib/
 │   │   ├── supabase.ts       # supabase client init
 │   │   ├── clerk.ts           # clerk config
-│   │   └── maps.ts            # google maps/directions helpers
+│   │   └── maps.ts            # OpenStreetMap tile config + OpenRouteService directions helpers
 │   ├── hooks/                # custom hooks (usePlaces, useAccessibilityFilter...)
 │   ├── types/                 # shared TypeScript types (Place, AccessibilityFeature...)
 │   ├── constants/              # design tokens, category lists, feature lists
