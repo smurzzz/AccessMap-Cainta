@@ -14,19 +14,20 @@ function TabIcon({ name, color }: { name: IconName; color: ColorValue }) {
 
 export default function TabsLayout() {
   return (
-    <Tabs
+<Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: C.green,
+        tabBarActiveTintColor: C.navy,
         tabBarInactiveTintColor: C.statusNegBorder,
-        tabBarStyle: { height: 64, paddingTop: 6, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line },
+        tabBarStyle: { height: 68, paddingTop: 6, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line },
         tabBarLabelStyle: { fontSize: T['label-sm'], fontWeight: '700' },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color }) => <TabIcon color={color} name="office-building-outline" /> }} />
-      <Tabs.Screen name="filter" options={{ title: 'Filter', tabBarIcon: ({ color }) => <TabIcon color={color} name="filter-variant" /> }} />
-      <Tabs.Screen name="map" options={{ title: 'Map', tabBarIcon: ({ color }) => <TabIcon color={color} name="map-marker-outline" /> }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color }) => <TabIcon color={color} name="account-circle-outline" /> }} />
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color }) => <TabIcon color={color} name="home-variant-outline" /> }} />
+      <Tabs.Screen name="explore" options={{ title: 'Explore', tabBarIcon: ({ color }) => <TabIcon color={color} name="compass-outline" /> }} />
+      <Tabs.Screen name="map" options={{ title: 'Map', tabBarIcon: ({ color }) => <TabIcon color={color} name="map-outline" /> }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color }) => <TabIcon color={color} name="account-outline" /> }} />
+      <Tabs.Screen name="filter" options={{ href: null }} />
     </Tabs>
   );
 }

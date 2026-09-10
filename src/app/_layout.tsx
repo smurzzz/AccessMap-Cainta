@@ -1,6 +1,6 @@
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
-import { Redirect, Stack, useSegments } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,29 +14,41 @@ if (!clerkPublishableKey) {
   );
 }
 
-function AuthGate({ children }: { children: React.ReactNode }) {
+function RootNavigator() {
   const { isLoaded, isSignedIn } = useAuth();
-  const segments = useSegments() as string[];
 
-  if (!isLoaded) {
-    return (
-      <View style={{ flex: 1, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={C.green} />
-      </View>
-    );
-  }
-
-  const atLogin = segments.length === 0 || segments[0] === 'index';
-
-  if (!isSignedIn && !atLogin) {
-    return <Redirect href="/" />;
-  }
-
-  if (isSignedIn && atLogin) {
-    return <Redirect href="/(tabs)" />;
-  }
-
-  return <>{children}</>;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.canvas } }}>
+        <Stack.Screen name="index" redirect={isLoaded ? !!isSignedIn : false} />
+        <Stack.Screen name="onboarding" redirect={isLoaded ? !!isSignedIn : false} />
+        <Stack.Screen name="login" redirect={isLoaded ? !!isSignedIn : false} />
+        <Stack.Screen name="(tabs)" redirect={isLoaded && !isSignedIn} />
+        <Stack.Screen name="place/[id]" redirect={isLoaded && !isSignedIn} />
+        <Stack.Screen name="directions" redirect={isLoaded && !isSignedIn} />
+        <Stack.Screen name="category" redirect={isLoaded && !isSignedIn} />
+        <Stack.Screen name="explore" redirect={isLoaded && !isSignedIn} />
+        <Stack.Screen name="sso-callback" />
+        <Stack.Screen name="admin" redirect={isLoaded && !isSignedIn} />
+      </Stack>
+      {!isLoaded && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: C.canvas,
+          }}
+        >
+          <ActivityIndicator size="large" color={C.green} />
+        </View>
+      )}
+    </>
+  );
 }
 
 export default function RootLayout() {
@@ -45,16 +57,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <RoleProvider>
-          <AuthGate>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.canvas } }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="place/[id]" />
-              <Stack.Screen name="directions" />
-              <Stack.Screen name="admin/index" />
-              <Stack.Screen name="admin/place-form" />
-            </Stack>
-          </AuthGate>
+          <RootNavigator />
         </RoleProvider>
       </SafeAreaProvider>
     </ClerkProvider>
