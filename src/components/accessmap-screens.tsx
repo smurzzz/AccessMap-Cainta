@@ -6,6 +6,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import OSMMap from '@/components/osm-map';
+import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useEffect, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import {
@@ -344,7 +345,8 @@ export function LoginScreen() {
             disabled={signingIn}
             accessibilityRole="button"
             accessibilityLabel="Continue with Google"
-            style={({ pressed }) => [styles.googleButton, pressed && styles.googleButtonPressed]}
+            style={styles.googleButton}
+            android_ripple={{ color: 'rgba(11,28,48,0.08)', foreground: true }}
           >
             <GoogleLogo />
             <Text style={styles.googleButtonText}>{signingIn ? 'Signing in…' : 'Continue with Google'}</Text>
@@ -364,89 +366,73 @@ export function SplashScreen() {
   const enter = () => router.replace('/onboarding');
   const { width: winWidth, height: winHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [size, setSize] = useState({ width: 0, height: 0 });
 
   const stageHeight = winHeight - insets.top - insets.bottom;
 
+  // Static subtree + plain onPress: no per-press re-renders, so every tap registers.
   return (
     <View style={styles.splashSafe}>
       <Pressable
-        style={({ pressed }) => [styles.splashStage, pressed && styles.splashStagePressed]}
+        style={styles.splashStage}
         onPress={enter}
         accessibilityRole="button"
         accessibilityLabel="Tap anywhere to continue"
       >
-        {({ pressed }) => (
-          <View
-            style={[styles.splashSizing, { width: winWidth, height: winHeight, paddingTop: insets.top, paddingBottom: insets.bottom }]}
-            onLayout={(e) => {
-              const { width, height } = e.nativeEvent.layout;
-              if (width !== size.width || height !== size.height) {
-                setSize({ width, height });
-              }
-            }}
-          >
-            {size.width > 0 && size.height > 0 && (
-              <Svg width={size.width} height={size.height} style={styles.splashGradient}>
-                <Defs>
-                  <LinearGradient id="splashGrad" x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor="#1e40ff" />
-                    <Stop offset="0.55" stopColor="#1a38e8" />
-                    <Stop offset="1" stopColor="#12246b" />
-                  </LinearGradient>
-                </Defs>
-                <Rect x="0" y="0" width={size.width} height={size.height} fill="url(#splashGrad)" />
-              </Svg>
-            )}
-            <View style={styles.splashGlowTop} />
-            <View style={styles.splashGlowBottom} />
+        <View
+          style={[styles.splashSizing, { width: winWidth, height: winHeight, paddingTop: insets.top, paddingBottom: insets.bottom }]}
+        >
+          <Svg width="100%" height="100%" style={styles.splashGradient}>
+            <Defs>
+              <LinearGradient id="splashGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#1e40ff" />
+                <Stop offset="0.55" stopColor="#1a38e8" />
+                <Stop offset="1" stopColor="#12246b" />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#splashGrad)" />
+          </Svg>
+          <View style={styles.splashGlowTop} />
+          <View style={styles.splashGlowBottom} />
 
-            <View style={[styles.splashBody, { height: stageHeight }]}>
-              <View style={styles.splashTopRow}>
-                <View style={styles.splashLivePill}>
-                  <View style={styles.splashLiveDot} />
-                  <Text style={styles.splashLiveText}>Live Mobility</Text>
-                </View>
-                <View style={styles.splashTopIcons}>
-                  <AppIcon name="wheelchair-accessibility" size={18} color={withAlpha('#ffffff', 0.7)} />
-                  <AppIcon name="navigation" size={18} color={withAlpha('#ffffff', 0.7)} />
+          <View style={[styles.splashBody, { height: stageHeight }]}>
+            <View style={styles.splashTopRow}>
+              <View style={styles.splashLivePill}>
+                <View style={styles.splashLiveDot} />
+                <Text style={styles.splashLiveText}>Live Mobility</Text>
+              </View>
+              <View style={styles.splashTopIcons}>
+                <AppIcon name="wheelchair-accessibility" size={18} color={withAlpha('#ffffff', 0.7)} />
+                <AppIcon name="navigation" size={18} color={withAlpha('#ffffff', 0.7)} />
+              </View>
+            </View>
+
+            <View style={styles.splashCenter}>
+              <View style={styles.splashPinWrap}>
+                <View style={styles.splashPinGlow} />
+                <View style={styles.splashPinBox}>
+                  <AppIcon name="map-marker" size={42} color="#ffffff" />
                 </View>
               </View>
-
-              <View style={styles.splashCenter}>
-                <View style={styles.splashPinWrap}>
-                  <View
-                    style={[
-                      styles.splashPinGlow,
-                      pressed && styles.splashPinGlowActive,
-                      pressed && styles.splashPinGlowScale,
-                    ]}
-                  />
-                  <View style={[styles.splashPinBox, pressed && styles.splashPinBoxPressed]}>
-                    <AppIcon name="map-marker" size={42} color="#ffffff" />
-                  </View>
-                </View>
-                <Text style={styles.splashTitle}>AccessMap</Text>
-                <Text style={styles.splashSubtitle}>Find accessible places before you go.</Text>
-                <View style={styles.splashTrustPill}>
-                  <AppIcon name="shield-check" size={16} color={withAlpha('#ffffff', 0.8)} />
-                  <Text style={styles.splashTrustText}>Zero Barriers · Community Verified</Text>
-                </View>
+              <Text style={styles.splashTitle}>AccessMap</Text>
+              <Text style={styles.splashSubtitle}>Find accessible places before you go.</Text>
+              <View style={styles.splashTrustPill}>
+                <AppIcon name="shield-check" size={16} color={withAlpha('#ffffff', 0.8)} />
+                <Text style={styles.splashTrustText}>Zero Barriers · Community Verified</Text>
               </View>
+            </View>
 
-              <View style={styles.splashBottom}>
-                <View style={styles.splashLocRow}>
-                  <AppIcon name="map-marker" size={14} color={withAlpha('#ffffff', 0.75)} />
-                  <Text style={styles.splashLocText}>San Isidro · Cainta · Rizal</Text>
-                </View>
-                <View style={styles.splashTapRow}>
-                  <Text style={styles.splashTapText}>Tap anywhere to continue</Text>
-                  <AppIcon name="arrow-right" size={14} color={withAlpha('#ffffff', 0.6)} />
-                </View>
+            <View style={styles.splashBottom}>
+              <View style={styles.splashLocRow}>
+                <AppIcon name="map-marker" size={14} color={withAlpha('#ffffff', 0.75)} />
+                <Text style={styles.splashLocText}>San Isidro · Cainta · Rizal</Text>
+              </View>
+              <View style={styles.splashTapRow}>
+                <Text style={styles.splashTapText}>Tap anywhere to continue</Text>
+                <AppIcon name="arrow-right" size={14} color={withAlpha('#ffffff', 0.6)} />
               </View>
             </View>
           </View>
-        )}
+        </View>
       </Pressable>
     </View>
   );
@@ -458,6 +444,7 @@ const ONBOARD_STEPS = [
     title: 'Find accessible places',
     body: 'Browse public places in San Isidro, Cainta with detailed accessibility information.',
     graphic: 'pin',
+    cta: 'Continue',
     preview: { name: 'San Isidro Community Hub', chip: 'Step-free Entry', place: 'Cainta, Rizal' },
   },
   {
@@ -465,11 +452,12 @@ const ONBOARD_STEPS = [
     title: 'Check before you visit',
     body: 'See verified ramps, accessible restrooms, elevators, and step-free entrances before heading out.',
     graphic: 'checklist',
-    grid: [
-      { icon: 'wheelchair-accessibility', title: 'Step-Free', sub: 'Grade 1:12 slope' },
-      { icon: 'toilet', title: 'Restrooms', sub: 'Grab rails fitted' },
-      { icon: 'elevator', title: 'Elevators', sub: 'Braille buttons' },
-      { icon: 'door-open', title: 'Automatic', sub: '90cm+ clearance' },
+    cta: 'Next',
+    tags: [
+      { icon: 'wheelchair-accessibility', label: 'Step-Free' },
+      { icon: 'toilet', label: 'Restrooms' },
+      { icon: 'elevator', label: 'Elevators' },
+      { icon: 'door-open', label: 'Automatic' },
     ],
   },
   {
@@ -477,35 +465,39 @@ const ONBOARD_STEPS = [
     title: 'Get directions there',
     body: 'Navigate from your current location with clear turn-by-turn accessibility guidance.',
     graphic: 'beacon',
+    cta: 'Get Started',
     pills: [
       { icon: 'wheelchair-accessibility', label: 'Step-free paths' },
-      { icon: 'volume-high', label: 'Voice prompts' },
       { icon: 'elevator', label: 'Transit lifts' },
     ],
   },
 ] as const;
 
+function PingDot({ size, color }: { size: number; color: string }) {
+  const ping = useSharedValue(0.75);
+  const animatedPingStyle = useAnimatedStyle(() => ({
+    opacity: ping.value,
+    transform: [{ scale: 1 + (1 - ping.value) * 2 }],
+  }));
+  useEffect(() => {
+    // Shared-value writes are how Reanimated drives animations; safe to mutate here.
+    // eslint-disable-next-line react-hooks/immutability
+    ping.value = withRepeat(withTiming(0, { duration: 1600, easing: Easing.out(Easing.ease) }), -1, false);
+  }, [ping]);
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color }, animatedPingStyle]} />
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />
+    </View>
+  );
+}
+
 function OnboardGraphic({ type }: { type: 'pin' | 'checklist' | 'beacon' }) {
   if (type === 'checklist') {
     return (
       <View style={styles.onbGraphicWrap}>
-        <View style={styles.onbAuraPulse} />
-        <View style={styles.onbGraphicCircleLarge}>
-          <Svg width={56} height={56} viewBox="0 0 64 64">
-            <Rect x={14} y={10} width={36} height={44} rx={6} fill="none" stroke={M3.primaryContainer} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-            <Path d="M22 22H32" stroke={M3.primaryContainer} strokeWidth={3} strokeLinecap="round" />
-            <Path d="M22 32H36" stroke={M3.primaryContainer} strokeWidth={3} strokeLinecap="round" />
-            <Path d="M22 42H30" stroke={M3.primaryContainer} strokeWidth={3} strokeLinecap="round" />
-            <Circle cx={44} cy={42} r={10} fill={M3.surfaceContainer} stroke={M3.primaryContainer} strokeWidth={3} />
-            <Path d="M40.5 42 43 44.5 48 39.5" stroke={M3.primaryContainer} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        </View>
-        <View style={styles.onbFloatingBadge}>
-          <View style={styles.onbBadgeDotWrap}>
-            <View style={styles.onbBadgeDotPing} />
-            <View style={styles.onbBadgeDot} />
-          </View>
-          <Text style={styles.onbBadgeText}>100% Verified</Text>
+        <View style={styles.onbGraphicCircle}>
+          <AppIcon name="check-decagram" size={40} color={M3.primaryContainer} />
         </View>
       </View>
     );
@@ -515,32 +507,28 @@ function OnboardGraphic({ type }: { type: 'pin' | 'checklist' | 'beacon' }) {
       <View style={styles.onbGraphicWrap}>
         <View style={styles.onbRadarOuter} />
         <View style={styles.onbRadarInner} />
-        <View style={styles.onbGraphicCircleLarge}>
+        <View style={styles.onbGraphicCircle}>
           <View style={styles.onbGraphicCircleSmall}>
-            <Svg width={36} height={36} viewBox="0 0 24 24" fill={M3.primaryContainer} style={{ transform: [{ rotate: '-12deg' }] }}>
-              <Path d="M12 2 4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z" />
-            </Svg>
+            <View style={styles.onbBeaconIconTilt}>
+              <AppIcon name="navigation" size={40} color={M3.primaryContainer} />
+            </View>
           </View>
         </View>
         <View style={styles.onbBeaconDotWrap}>
-          <View style={styles.onbBeaconDotPing} />
-          <View style={styles.onbBeaconDot} />
+          <PingDot size={10} color="#1e40ff" />
         </View>
       </View>
     );
   }
   return (
     <View style={styles.onbGraphicWrap}>
-      <View style={styles.onbAuraPulse} />
       <View style={styles.onbGraphicCircle}>
-        <View style={styles.onbGraphicRing}>
-          <Svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke={M3.primaryContainer} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <Path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-            <Circle cx={12} cy={10} r={3} />
-          </Svg>
-        </View>
+        <Svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke={M3.primary} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+          <Path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+          <Circle cx={12} cy={10} r={3} />
+        </Svg>
         <View style={styles.onbPinBadge}>
-          <AppIcon name="wheelchair-accessibility" size={20} color={M3.onPrimary} />
+          <AppIcon name="wheelchair-accessibility" size={18} color={M3.onPrimary} />
         </View>
       </View>
     </View>
@@ -550,8 +538,11 @@ function OnboardGraphic({ type }: { type: 'pin' | 'checklist' | 'beacon' }) {
 export function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const current = ONBOARD_STEPS[step];
+  const isLast = step === ONBOARD_STEPS.length - 1;
   const finish = () => router.replace('/login');
   const next = () => (step < ONBOARD_STEPS.length - 1 ? setStep(step + 1) : finish());
+  // One complete, flat style object per step — no style functions, no array flattening.
+  const ctaStyle = [styles.onbCtaStep1, styles.onbCtaStep2, styles.onbCtaStep3][step];
 
   return (
     <SafeAreaView style={styles.onbSafe} edges={['top', 'bottom']}>
@@ -573,7 +564,7 @@ export function OnboardingScreen() {
               <Pressable onPress={() => setStep(step - 1)} style={styles.onbBackButton} accessibilityRole="button" accessibilityLabel="Go back">
                 <AppIcon name="arrow-left" size={20} color={M3.secondary} />
               </Pressable>
-              <Text style={styles.onbTag}>{current.tag}</Text>
+              <Text style={styles.onbStepTag}>{current.tag}</Text>
               {step < ONBOARD_STEPS.length - 1 ? (
                 <Pressable onPress={finish} style={styles.onbSkipButton} accessibilityRole="button">
                   <Text style={styles.onbSkipText}>Skip</Text>
@@ -585,10 +576,10 @@ export function OnboardingScreen() {
           ) : null}
         </View>
 
-        <View style={styles.onbContent}>
+        <Animated.View key={step} entering={FadeIn.duration(300)} style={styles.onbContent}>
           <OnboardGraphic type={current.graphic} />
           <Text style={styles.onbTitle}>{current.title}</Text>
-          <Text style={styles.onbBody}>{current.body}</Text>
+          <Text style={[styles.onbBody, step > 0 && styles.onbBodyStep]}>{current.body}</Text>
 
           {'preview' in current ? (
             <View style={styles.onbPreviewCard}>
@@ -608,17 +599,12 @@ export function OnboardingScreen() {
             </View>
           ) : null}
 
-          {'grid' in current ? (
-            <View style={styles.onbGrid}>
-              {current.grid.map((item) => (
-                <View key={item.title} style={styles.onbGridCard}>
-                  <View style={styles.onbGridIcon}>
-                    <AppIcon name={item.icon} size={18} color={M3.primaryContainer} />
-                  </View>
-                  <View style={styles.onbGridBody}>
-                    <Text style={styles.onbGridTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.onbGridSub} numberOfLines={1}>{item.sub}</Text>
-                  </View>
+          {'tags' in current ? (
+            <View style={styles.onbTags}>
+              {current.tags.map((tag) => (
+                <View key={tag.label} style={styles.onbTagPill}>
+                  <AppIcon name={tag.icon} size={16} color={M3.primaryContainer} />
+                  <Text style={styles.onbTagPillText}>{tag.label}</Text>
                 </View>
               ))}
             </View>
@@ -634,20 +620,33 @@ export function OnboardingScreen() {
               ))}
             </View>
           ) : null}
-        </View>
+        </Animated.View>
 
         <View style={styles.onbFooter}>
           <Pressable
             onPress={next}
-            style={({ pressed }) => [styles.onbNextButton, pressed && styles.onbNextButtonPressed]}
+            style={ctaStyle}
+            android_ripple={{ color: withAlpha('#ffffff', 0.25), foreground: true }}
             accessibilityRole="button"
+            accessibilityLabel={`Continue to next onboarding step: ${step < ONBOARD_STEPS.length - 1 ? ONBOARD_STEPS[step + 1]?.title : 'Finish'}`}
           >
-            <Text style={styles.onbNextText}>Next</Text>
-            <AppIcon name="arrow-right" size={18} color={M3.onPrimary} />
+            <Text style={step === 1 ? styles.onbNextTextTitle : styles.onbNextText}>{current.cta}</Text>
+            <View style={styles.onbArrow}>
+              <AppIcon name="arrow-right" size={step === 1 ? 20 : 18} color={M3.onPrimary} />
+            </View>
           </Pressable>
-          <Pressable onPress={finish} style={styles.onbSkipLink} accessibilityRole="button">
-            <Text style={styles.onbSkipLinkText}>Skip</Text>
-          </Pressable>
+          {!isLast ? (
+            <Pressable
+              onPress={finish}
+              style={step === 1 ? styles.onbSkipInline : styles.onbSkipFull}
+              accessibilityRole="button"
+              accessibilityLabel="Skip onboarding and proceed to home directory"
+            >
+              <Text style={step === 1 ? styles.onbSkipTextSm : styles.onbSkipTextFull}>Skip</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.onbFooterCaption}>Ready to explore your city with confidence</Text>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -2250,8 +2249,7 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   locationText: { color: M3.onSurfaceVariant, fontSize: 14, lineHeight: 20 },
   loginFooter: { width: '100%', alignItems: 'center', gap: 16 },
-  googleButton: { width: '100%', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: M3.surfaceContainerLowest, borderRadius: 12, borderWidth: 1, borderColor: M3.loginBorder, shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 2, elevation: 1 },
-  googleButtonPressed: { backgroundColor: M3.surfaceContainerLow },
+  googleButton: { width: '100%', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: M3.surfaceContainerLowest, borderRadius: 12, borderWidth: 1, borderColor: M3.loginBorder, overflow: 'hidden', shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 2, elevation: 1 },
   googleButtonText: { color: M3.onSurface, fontSize: 15, lineHeight: 20, fontWeight: '600' },
   termsText: { color: M3.outline, fontSize: 13, lineHeight: 18, letterSpacing: 0.065, textAlign: 'center', maxWidth: 320, paddingHorizontal: 8 },
   termsLink: { color: M3.onSurface, fontWeight: '500', textDecorationLine: 'underline' },
@@ -3288,7 +3286,6 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   toggleLabel: { marginLeft: 'auto', color: C.white, backgroundColor: C.green, borderRadius: 18, padding: 7, fontWeight: '800' },
   splashSafe: { flex: 1, backgroundColor: '#12246b' },
   splashStage: { flex: 1 },
-  splashStagePressed: { opacity: 0.97 },
   splashSizing: { flex: 1 },
   splashGradient: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   splashGlowTop: { position: 'absolute', top: -96, right: -96, width: 288, height: 288, borderRadius: 144, backgroundColor: withAlpha('#ffffff', 0.05) },
@@ -3311,8 +3308,6 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     borderRadius: 16,
     opacity: 0.6,
   },
-  splashPinGlowActive: { opacity: 1 },
-  splashPinGlowScale: { transform: [{ scale: 1.1 }] },
   splashPinBox: {
     width: 80,
     height: 80,
@@ -3321,7 +3316,6 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     alignItems: 'center',
     justifyContent: 'center',
   },
-  splashPinBoxPressed: { transform: [{ scale: 0.95 }] },
   splashTitle: { color: '#ffffff', fontSize: T['headline-lg'], lineHeight: 36, fontWeight: '700', letterSpacing: -0.6, marginBottom: 4, textAlign: 'center' },
   splashSubtitle: { color: '#d2d5ff', fontSize: T['body-md'], lineHeight: 20, textAlign: 'center', maxWidth: 260 },
   splashTrustPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: withAlpha('#ffffff', 0.1), borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8, marginTop: 20 },
@@ -3340,29 +3334,21 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   onbProgressSegmentIdle: { backgroundColor: M3.surfaceContainerHigh },
   onbHeaderMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 12, width: '100%' },
   onbBackButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  onbTag: { color: M3.primaryContainer, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', flex: 1, textAlign: 'center' },
+  onbStepTag: { color: M3.primaryContainer, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', flex: 1, textAlign: 'center' },
   onbSkipButton: { width: 36, alignItems: 'flex-end', justifyContent: 'center' },
   onbSkipText: { color: M3.onSurfaceVariant, fontSize: T['label-md'], lineHeight: 16, fontWeight: '500' },
   onbContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  onbGraphicWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 32 },
-  onbAuraPulse: { position: 'absolute', width: 176, height: 176, borderRadius: 88, backgroundColor: M3.surfaceContainerLow },
-  onbGraphicCircle: { position: 'relative', width: 144, height: 144, borderRadius: 72, backgroundColor: M3.surfaceContainerLow, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 1 },
-  onbGraphicRing: { width: 96, height: 96, borderRadius: 48, backgroundColor: M3.surfaceContainer, alignItems: 'center', justifyContent: 'center' },
-  onbPinBadge: { position: 'absolute', bottom: -4, right: -4, width: 40, height: 40, borderRadius: 20, backgroundColor: M3.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
-  onbGraphicCircleLarge: { position: 'relative', width: 128, height: 128, borderRadius: 64, backgroundColor: M3.surfaceContainer, alignItems: 'center', justifyContent: 'center' },
-  onbGraphicCircleSmall: { width: 100, height: 100, borderRadius: 50, backgroundColor: M3.surfaceContainerLow, alignItems: 'center', justifyContent: 'center' },
-  onbFloatingBadge: { position: 'absolute', bottom: -8, right: -8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: M3.surfaceContainerLowest, borderRadius: 999, paddingLeft: 8, paddingRight: 12, paddingVertical: 6, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  onbBadgeDotWrap: { width: 8, height: 8, alignItems: 'center', justifyContent: 'center' },
-  onbBadgeDotPing: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: M3.tertiaryContainer },
-  onbBadgeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: M3.tertiaryContainer },
-  onbBadgeText: { color: M3.tertiary, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '700' },
-  onbRadarOuter: { position: 'absolute', width: 176, height: 176, borderRadius: 88, backgroundColor: withAlpha(M3.surfaceContainerHigh, 0.6) },
-  onbRadarInner: { position: 'absolute', width: 144, height: 144, borderRadius: 72, backgroundColor: M3.surfaceContainerLow },
-  onbBeaconDotWrap: { position: 'absolute', top: 0, right: 0, width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
-  onbBeaconDotPing: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: withAlpha('#1e40ff', 0.75) },
-  onbBeaconDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#1e40ff' },
+  onbGraphicWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 40 },
+  onbGraphicCircle: { position: 'relative', width: 96, height: 96, borderRadius: 48, backgroundColor: M3.surfaceContainerLow, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 1 },
+  onbPinBadge: { position: 'absolute', bottom: -4, right: -4, width: 32, height: 32, borderRadius: 16, backgroundColor: M3.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  onbGraphicCircleSmall: { width: 80, height: 80, borderRadius: 40, backgroundColor: M3.surfaceContainer, alignItems: 'center', justifyContent: 'center' },
+  onbBeaconIconTilt: { transform: [{ rotate: '-12deg' }] },
+  onbRadarOuter: { position: 'absolute', width: 176, height: 176, borderRadius: 88, backgroundColor: withAlpha(M3.surfaceContainerLow, 0.6) },
+  onbRadarInner: { position: 'absolute', width: 128, height: 128, borderRadius: 64, backgroundColor: M3.surfaceContainerLow },
+  onbBeaconDotWrap: { position: 'absolute', top: 12, right: 24, alignItems: 'center', justifyContent: 'center' },
   onbTitle: { color: M3.onSurface, fontSize: T['headline-md'], lineHeight: 30, fontWeight: '600', letterSpacing: -0.36, textAlign: 'center', marginBottom: 12 },
   onbBody: { color: M3.secondary, fontSize: T['body-lg'], lineHeight: 24, textAlign: 'center', maxWidth: 320 },
+  onbBodyStep: { fontSize: T['body-md'], lineHeight: 20 },
   onbPreviewCard: { flexDirection: 'row', alignItems: 'center', gap: 12, width: '100%', backgroundColor: M3.surfaceContainerLow, borderRadius: 12, padding: 16, marginTop: 32, shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 },
   onbPreviewIcon: { width: 40, height: 40, borderRadius: 8, backgroundColor: M3.surfaceContainerLowest, alignItems: 'center', justifyContent: 'center' },
   onbPreviewBody: { flex: 1, minWidth: 0 },
@@ -3371,19 +3357,22 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   onbPreviewChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: M3.tertiaryFixed, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   onbPreviewChipText: { color: M3.onTertiaryFixed, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600' },
   onbPreviewPlace: { color: M3.secondary, fontSize: T['body-sm'], lineHeight: 18, flexShrink: 1 },
-  onbGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: '100%', marginTop: 28 },
-  onbGridCard: { flexDirection: 'row', alignItems: 'center', gap: 12, width: '48.5%', flexGrow: 1, backgroundColor: M3.surfaceContainerLowest, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: M3.surfaceContainerHigh },
-  onbGridIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: M3.surfaceContainer, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  onbGridBody: { flex: 1, minWidth: 0 },
-  onbGridTitle: { color: M3.onSurface, fontSize: T['title-sm'], lineHeight: 20, fontWeight: '600' },
-  onbGridSub: { color: M3.secondary, fontSize: T['label-sm'], lineHeight: 14, marginTop: 1 },
+  onbTags: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, width: '100%', marginTop: 20 },
+  onbTagPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: M3.surfaceContainerLowest, shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2, elevation: 1 },
+  onbTagPillText: { color: M3.onSurface, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600' },
   onbPills: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 32 },
   onbPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: M3.surfaceContainerLow },
   onbPillText: { color: M3.onSurface, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600' },
-  onbFooter: { width: '100%', gap: 12, marginTop: 40 },
-  onbNextButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 999, backgroundColor: M3.primaryContainer, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 },
-  onbNextButtonPressed: { opacity: 0.95 },
+  onbFooter: { width: '100%', gap: 12, marginTop: 40, alignItems: 'center' },
+  onbCtaStep1: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', height: 56, borderRadius: 999, backgroundColor: M3.primary },
+  onbCtaStep2: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', height: 56, borderRadius: 999, backgroundColor: M3.primaryContainer },
+  onbCtaStep3: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', height: 56, borderRadius: 999, backgroundColor: M3.primaryContainer },
   onbNextText: { color: M3.onPrimary, fontSize: T['link-md'], lineHeight: 18, fontWeight: '600' },
-  onbSkipLink: { width: '100%', alignItems: 'center', paddingVertical: 10 },
-  onbSkipLinkText: { color: M3.secondary, fontSize: T['link-md'], lineHeight: 18, fontWeight: '600' },
+  onbNextTextTitle: { color: M3.onPrimary, fontSize: T['title-md'], lineHeight: 22, fontWeight: '600' },
+  onbArrow: { marginLeft: 8, flexDirection: 'row', alignItems: 'center' },
+  onbSkipFull: { width: '100%', alignItems: 'center', paddingVertical: 10 },
+  onbSkipInline: { alignSelf: 'center', paddingVertical: 4, paddingHorizontal: 8 },
+  onbSkipTextFull: { color: M3.secondary, fontSize: T['link-md'], lineHeight: 18, fontWeight: '600', textAlign: 'center' },
+  onbSkipTextSm: { color: M3.secondary, fontSize: T['label-md'], lineHeight: 16, fontWeight: '500' },
+  onbFooterCaption: { color: withAlpha(M3.onSurfaceVariant, 0.8), fontSize: T['label-sm'], lineHeight: 14, textAlign: 'center', marginTop: 4 },
 });
