@@ -1,23 +1,14 @@
-import { useMemo } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { buildMapHtml, type OSM_Bounds, type OSM_Pin, type OSM_Point } from './osm-map-html';
 
-export type OSM_Pin = {
-  id: string;
-  latitude: number;
-  longitude: number;
-  title: string;
-  color?: string;
-};
+export type { OSM_Bounds, OSM_Pin, OSM_Point } from './osm-map-html';
 
-export type OSM_Point = {
-  latitude: number;
-  longitude: number;
-};
-
-export type OSM_Bounds = {
-  southWest: OSM_Point;
-  northEast: OSM_Point;
+export type OSMMapHandle = {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  recenter: () => void;
 };
 
 type Props = {
@@ -25,136 +16,108 @@ type Props = {
   line?: OSM_Point[];
   focus?: OSM_Point;
   bounds?: OSM_Bounds;
+  activePinId?: string | null;
+  userLocation?: OSM_Point | null;
   height?: number;
   onPinPress?: (id: string) => void;
 };
 
-const CENTER_LAT = 14.582;
-const CENTER_LNG = 121.132;
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+/** The data subset that can change after mount and flows through the bridge. */
+type MapUpdate = {
+  pins: OSM_Pin[];
+  line: OSM_Point[];
+  activePinId?: string | null;
+  userLocation?: OSM_Point | null;
+  focus?: OSM_Point | null;
+};
 
-function buildHtml(
-  pins: OSM_Pin[],
-  line: OSM_Point[] | undefined,
-  focus: OSM_Point | undefined,
-  bounds: OSM_Bounds | undefined,
-): string {
-  const pinsJs = JSON.stringify(
-    pins.map((pin) => ({
-      id: pin.id,
-      lat: pin.latitude,
-      lng: pin.longitude,
-      title: pin.title,
-      color: pin.color ?? '#059669',
-    })),
+const OSMMap = forwardRef<OSMMapHandle, Props>(function OSMMap(
+  { pins = [], line, focus, bounds, activePinId, userLocation, height = 320, onPinPress },
+  ref,
+) {
+  const webviewRef = useRef<WebView>(null);
+  const readyRef = useRef(false);
+  const pendingRef = useRef<string | null>(null);
+  const lastSentRef = useRef<string>('');
+
+  // The HTML is built once per mount; everything after goes through the bridge — no reloads.
+  const html = useMemo(
+    () =>
+      buildMapHtml({
+        pins,
+        line: line ?? [],
+        focus: focus ?? null,
+        bounds: bounds ?? null,
+        activePinId: activePinId ?? null,
+        userLocation: userLocation ?? null,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
-  const lineJs = JSON.stringify((line ?? []).map((point) => [point.latitude, point.longitude]));
-  const focusJs = JSON.stringify(focus ?? null);
-  const boundsJs = JSON.stringify(
-    bounds
-      ? {
-          sw: { lat: bounds.southWest.latitude, lng: bounds.southWest.longitude },
-          ne: { lat: bounds.northEast.latitude, lng: bounds.northEast.longitude },
+
+  const injectUpdate = useCallback((payload: MapUpdate) => {
+    const script = `window.__mapBridge.apply(${JSON.stringify(payload)}); true;`;
+    webviewRef.current?.injectJavaScript(script);
+  }, []);
+
+  const injectCommand = useCallback((command: 'zoomIn' | 'zoomOut' | 'recenter') => {
+    if (!readyRef.current) return;
+    webviewRef.current?.injectJavaScript(`window.__mapBridge.${command}(); true;`);
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => injectCommand('zoomIn'),
+    zoomOut: () => injectCommand('zoomOut'),
+    recenter: () => injectCommand('recenter'),
+  }), [injectCommand]);
+
+  // Diff current props against what the map already has; push changes over the bridge.
+  useEffect(() => {
+    const payload: MapUpdate = {
+      pins,
+      line: line ?? [],
+      activePinId: activePinId ?? null,
+      userLocation: userLocation ?? null,
+      focus: focus ?? null,
+    };
+    const serialized = JSON.stringify(payload);
+    if (serialized === lastSentRef.current) return;
+    lastSentRef.current = serialized;
+    if (!readyRef.current) {
+      pendingRef.current = serialized;
+      return;
+    }
+    injectUpdate(payload);
+  }, [pins, line, focus, bounds, activePinId, userLocation, injectUpdate]);
+
+  const handleMessage = useCallback(
+    (event: WebViewMessageEvent) => {
+      try {
+        const data = JSON.parse(event.nativeEvent.data) as { type?: string; id?: string };
+        if (data.type === 'pin' && data.id && onPinPress) onPinPress(data.id);
+        else if (data.type === 'ready') {
+          readyRef.current = true;
+          const pending = pendingRef.current;
+          pendingRef.current = null;
+          if (pending) {
+            try {
+              injectUpdate(JSON.parse(pending) as MapUpdate);
+            } catch {
+              // ignore malformed pending payload
+            }
+          }
         }
-      : null,
+      } catch {
+        // ignore malformed messages from the embedded page
+      }
+    },
+    [onPinPress, injectUpdate],
   );
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-  html, body, #map { height: 100%; margin: 0; padding: 0; }
-  .accessmap-pin { width: 20px; height: 20px; border-radius: 10px; border: 3px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
-</style>
-</head>
-<body>
-<div id="map"></div>
-<script>
-  var pins = ${pinsJs};
-  var line = ${lineJs};
-  var focus = ${focusJs};
-  var maxArea = ${boundsJs};
-  var map = L.map('map', { scrollWheelZoom: false }).setView([${CENTER_LAT}, ${CENTER_LNG}], 14);
-  L.tileLayer('${TILE_URL}', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-  }).addTo(map);
-
-  if (maxArea) {
-    var areaBounds = L.latLngBounds(
-      L.latLng(maxArea.sw.lat, maxArea.sw.lng),
-      L.latLng(maxArea.ne.lat, maxArea.ne.lng)
-    );
-    L.rectangle(areaBounds, {
-      color: '#059669',
-      weight: 2,
-      dashArray: '6 4',
-      fillColor: '#059669',
-      fillOpacity: 0.06
-    }).addTo(map);
-    map.setMaxBounds(areaBounds);
-    map.setMaxBoundsViscosity(0.8);
-  }
-
-  function postPin(id) {
-    if (window.ReactNativeWebView && id) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pin', id: id }));
-    }
-  }
-
-  function pinIcon(color) {
-    return L.divIcon({
-      className: '',
-      html: '<div class="accessmap-pin" style="background:' + color + '"></div>',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-      popupAnchor: [0, -12]
-    });
-  }
-
-  var bounds = [];
-  pins.forEach(function (pin) {
-    var marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.color) }).addTo(map);
-    marker.bindPopup('<b>' + pin.title + '</b>');
-    marker.on('click', function () { postPin(pin.id); });
-    bounds.push([pin.lat, pin.lng]);
-  });
-
-  if (line.length > 1) {
-    L.polyline(line, { color: '#2563EB', weight: 5, opacity: 0.9 }).addTo(map);
-    line.forEach(function (point) { bounds.push(point); });
-  }
-
-  if (focus) {
-    map.setView([focus.latitude, focus.longitude], 16);
-  } else if (bounds.length > 0) {
-    map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
-  } else if (maxArea) {
-    map.setView(areaBounds.getCenter(), map.getBoundsZoom(areaBounds, false));
-  }
-</script>
-</body>
-</html>`;
-}
-
-export default function OSMMap({ pins = [], line, focus, bounds, height = 320, onPinPress }: Props) {
-  const html = useMemo(() => buildHtml(pins, line, focus, bounds), [pins, line, focus, bounds]);
-
-  const handleMessage = (event: WebViewMessageEvent) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data) as { type?: string; id?: string };
-      if (data.type === 'pin' && data.id && onPinPress) onPinPress(data.id);
-    } catch {
-      // ignore malformed messages from the embedded page
-    }
-  };
 
   return (
     <View style={[styles.shell, { height }]}>
       <WebView
+        ref={webviewRef}
         originWhitelist={['*']}
         source={{ html }}
         javaScriptEnabled
@@ -167,16 +130,18 @@ export default function OSMMap({ pins = [], line, focus, bounds, height = 320, o
       />
     </View>
   );
-}
+});
+
+export default OSMMap;
 
 const styles = StyleSheet.create({
   shell: {
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#f6f4ef',
+    backgroundColor: '#eff4ff',
   },
   web: {
     flex: 1,
-    backgroundColor: '#f6f4ef',
+    backgroundColor: '#eff4ff',
   },
 });

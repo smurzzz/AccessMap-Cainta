@@ -76,6 +76,13 @@ Quick reference for every major library/service used, why it's used, and where t
 - **What:** Free, open map tile data — no API key, no account, no billing needed for the tile display itself.
 - **Docs:** https://wiki.openstreetmap.org/wiki/API
 - **Usage note:** OSM's public tile server (`tile.openstreetmap.org`) is community-run and has a [usage policy](https://operations.osmfoundation.org/policies/tiles/) — fine for development and a thesis-scale demo, but not intended for high-traffic production use. If the app ever needs to scale beyond a demo, switch to a paid tile provider (e.g. MapTiler, Stadia Maps, or Mapbox) that mirrors OSM data.
+- **Current renderer:** the app renders OSM data through a Leaflet WebView (native) / iframe (web) using **Stadia Maps — Alidade Smooth** tiles (clean, marker-friendly style) with automatic fallback to **CARTO Voyager** when no key is configured.
+- **Stadia Maps:**
+  - **Sign up (free tier, no credit card):** https://stadiamaps.com/
+  - **Tile URL template:** `https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=YOUR_KEY`
+  - **Key stored as** `EXPO_PUBLIC_STADIA_API_KEY` in `.env`. Without it the map falls back to CARTO's keyless Voyager tiles, so the app never breaks.
+  - **Free tier quota:** check the dashboard after signup; ample for a thesis-scale demo.
+  - **Leaflet docs:** https://leafletjs.com/
 - **React Native usage:** via `react-native-maps`'s `MapView` with a `UrlTile` child component pointed at the OSM tile URL template:
   ```
   https://tile.openstreetmap.org/{z}/{x}/{y}.png

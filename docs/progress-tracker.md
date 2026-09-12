@@ -53,6 +53,9 @@ Living checklist. Update as you go — check items off, add dates, note blockers
 - [x] Admin entry point built (separate from bottom tabs, route-guarded to `role='admin'`)
 - [ ] OpenRouteService account + API key created
 - [x] Map/Location View wired to real coordinates (OpenStreetMap tiles)
+- [x] Basemap upgraded to Stadia Maps Alidade Smooth (key-based, automatic CARTO fallback)
+- [x] Map interactive controls working: zoom in/out, recenter, user-location dot, active-pin highlight, styled popups
+- [x] Map WebView updates live over a JS bridge (no reload on pin taps) — native + web share one Leaflet builder
 - [x] Directions API integrated (OpenRouteService), static step list rendering
 - [x] Location permission flow implemented
 - [x] Admin Add/Edit form wired to Supabase (insert/update `places` + `accessibility_features`)

@@ -5,7 +5,7 @@ import { useClerk, useSSO, useUser } from '@clerk/clerk-expo';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import OSMMap from '@/components/osm-map';
+import OSMMap, { type OSMMapHandle } from '@/components/osm-map';
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useEffect, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
@@ -26,11 +26,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, {
   Circle,
   Defs,
-  Ellipse,
   G,
   LinearGradient,
   Path,
-  Pattern,
   Rect,
   Stop,
   Text as SvgText,
@@ -170,6 +168,24 @@ function availableFeatureTypes(place: Place): FeatureType[] {
       (feature) => feature.feature_type === type && feature.status === 'available',
     ),
   );
+}
+
+/** Great-circle distance in meters between two coordinate points (null when incomplete). */
+function haversineMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number | null {
+  if (
+    !Number.isFinite(a.latitude) || !Number.isFinite(a.longitude) ||
+    !Number.isFinite(b.latitude) || !Number.isFinite(b.longitude)
+  ) {
+    return null;
+  }
+  const R = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
 }
 
 function withAlpha(hex: string, opacity: number): string {
@@ -988,63 +1004,6 @@ return (
   );
 }
 
-function VectorMapCanvas() {
-  return (
-    <View style={styles.mapCanvas} pointerEvents="none">
-      <Svg width="100%" height="100%" viewBox="0 0 400 700" preserveAspectRatio="xMidYMid slice">
-        <Defs>
-          <LinearGradient id="routeGradient" x1="0%" x2="100%" y1="0%" y2="100%">
-            <Stop offset="0%" stopColor="#1e40ff" />
-            <Stop offset="100%" stopColor="#0028d2" />
-          </LinearGradient>
-          <Pattern id="streetGrid" width="120" height="120" patternUnits="userSpaceOnUse">
-            <Path d="M 120 0 L 0 0 0 120" fill="none" opacity={0.6} stroke="#dce9ff" strokeWidth={1} />
-          </Pattern>
-        </Defs>
-        <Rect width="400" height="700" fill="#eff4ff" />
-        <Rect width="400" height="700" fill="url(#streetGrid)" />
-        <Path d="M-20 80 Q 40 60 70 110 T 30 190 T -30 160 Z" fill="#d3e4fe" opacity={0.45} />
-        <Path d="M290 280 C 340 260, 390 310, 420 330 L 420 440 C 370 410, 320 420, 280 370 Z" fill="#d3e4fe" opacity={0.45} />
-        <G stroke="#ffffff" strokeLinecap="round" strokeLinejoin="round">
-          <Path d="M -20 180 C 90 190, 160 210, 420 230" strokeWidth={12} />
-          <Path d="M 80 -20 L 110 320 L 140 720" strokeWidth={14} />
-          <Path d="M 270 -20 L 250 280 L 220 720" strokeWidth={10} />
-          <Path d="M -10 460 C 120 450, 240 480, 420 510" strokeWidth={11} />
-          <Path d="M -20 620 L 420 580" strokeWidth={8} />
-          <Path d="M 0 60 L 400 90" opacity={0.9} strokeWidth={5} />
-          <Path d="M 20 340 L 380 320" opacity={0.9} strokeWidth={6} />
-          <Path d="M 110 320 L 250 280" opacity={0.9} strokeWidth={6} />
-          <Path d="M 180 140 L 260 210" opacity={0.8} strokeWidth={4} />
-          <Path d="M 30 400 L 230 430" opacity={0.8} strokeWidth={4.5} />
-        </G>
-        <G fill="none" opacity={0.8} stroke="#dce9ff" strokeWidth={1}>
-          <Path d="M -20 174 C 90 184, 160 204, 420 224" />
-          <Path d="M -20 186 C 90 196, 160 216, 420 236" />
-          <Path d="M 73 -20 L 103 320 L 133 720" />
-          <Path d="M 87 -20 L 117 320 L 147 720" />
-        </G>
-        <SvgText transform="rotate(3 12 174)" x="12" y="174" fill="#565e74" fontSize={11} fontWeight="600" letterSpacing={0.8}>ORTIGAS AVE EXT</SvgText>
-        <SvgText transform="rotate(78 118 120)" x="118" y="120" fill="#565e74" fontSize={10} fontWeight="600" letterSpacing={0.8}>A. BONIFACIO AVE</SvgText>
-        <SvgText transform="rotate(5 28 453)" x="28" y="453" fill="#565e74" fontSize={10} fontWeight="600" letterSpacing={0.8}>FELIX AVE / SAN ISIDRO</SvgText>
-        <G opacity={0.8}>
-          <Circle cx={95} cy={140} r={3.5} fill="#565e74" />
-          <Circle cx={260} cy={380} r={3} fill="#565e74" />
-          <Circle cx={170} cy={445} r={3} fill="#565e74" />
-        </G>
-        <G stroke="url(#routeGradient)" strokeLinecap="round" strokeLinejoin="round" strokeWidth={6} fill="none" fillOpacity={0}>
-          <Path d="M 105 520 L 122 458 L 110 320 L 195 304 L 246 295 L 248 244" />
-        </G>
-        <Path d="M 105 520 L 122 458 L 110 320 L 195 304 L 246 295 L 248 244" fill="none" stroke="#bcc3ff" strokeDasharray="8 8" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-        <G transform="translate(248, 240)">
-          <Ellipse cx={0} cy={4} rx={8} ry={3.5} fill="#0b1c30" opacity={0.18} />
-          <Path d="M 0 -22 C -8 -22 -14 -16 -14 -8 C -14 3 0 10 0 10 C 0 10 14 3 14 -8 C 14 -16 8 -22 0 -22 Z" fill="#0028d2" />
-          <Circle cx={0} cy={-9} r={5} fill="#ffffff" />
-          <Circle cx={0} cy={-9} r={2.5} fill="#1e40ff" />
-        </G>
-      </Svg>
-    </View>
-  );
-}
 
 export function MapScreen() {
   const params = useLocalSearchParams<{ place?: string }>();
@@ -1053,70 +1012,161 @@ export function MapScreen() {
   const insets = useSafeAreaInsets();
   const [tappedPlaceId, setTappedPlaceId] = useState<string | null>(params.place ?? null);
   const [savedIds, setSavedIds] = useState<Record<string, boolean>>({});
-  const activePlaceId = params.place ?? tappedPlaceId ?? (places[0]?.id ?? null);
-  const activePlace = places.find((place) => place.id === activePlaceId) ?? null;
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [query, setQuery] = useState('');
+  const [accessibleOnly, setAccessibleOnly] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FeatureType | null>(null);
+  const mapRef = useRef<OSMMapHandle>(null);
+
+  const matchesQuery = (place: Place, text: string) => {
+    const q = text.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      place.name.toLowerCase().includes(q) ||
+      (place.address ?? '').toLowerCase().includes(q) ||
+      homeCategoryLabel[place.category].toLowerCase().includes(q)
+    );
+  };
+
+  const hasFeature = (place: Place, type: FeatureType) =>
+    (place.accessibility_features ?? []).some((feature) => feature.feature_type === type && feature.status === 'available');
+
+  const isFullyAccessible = (place: Place) =>
+    hasFeature(place, 'entrance') && availableFeatureTypes(place).length >= 3;
+
+  const visiblePlaces = places.filter(
+    (place) =>
+      matchesQuery(place, query) &&
+      (!activeFilter || hasFeature(place, activeFilter)) &&
+      (!accessibleOnly || isFullyAccessible(place)),
+  );
+
+  const activePlaceId = params.place ?? tappedPlaceId ?? (visiblePlaces[0]?.id ?? null);
+  const activePlace = visiblePlaces.find((place) => place.id === activePlaceId) ?? null;
   const mapHeight = Math.max(240, height - insets.top - insets.bottom - 68);
 
   const toggleSaved = (id: string) => setSavedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const recenterOnUser = () => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setUserLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+        setTappedPlaceId(null);
+        mapRef.current?.recenter();
+      } catch {
+        // location unavailable — keep the map where it is
+      }
+    })();
+  };
 
   return (
     <View style={styles.mapSafe}>
       {/* Map viewport */}
       <View style={[styles.mapViewport, { height: mapHeight }]}>
-        {Platform.OS === 'web' ? (
-          <VectorMapCanvas />
-        ) : (
-          <View style={styles.mapRealWrap}>
-            {!error && loading ? <LoadingState label="Loading facilities…" /> : null}
-            {!error && !loading && places.length > 0 ? (
-              <OSMMap
-                pins={places.map((place) => ({ id: place.id, latitude: place.latitude, longitude: place.longitude, title: place.name }))}
-                focus={activePlace ? { latitude: activePlace.latitude, longitude: activePlace.longitude } : undefined}
-                bounds={SAN_ISIDRO_BOUNDS}
-                height={mapHeight}
-                onPinPress={(id) => setTappedPlaceId(id)}
-              />
-            ) : null}
-          </View>
-        )}
+        {!error && loading && places.length === 0 ? <LoadingState label="Loading facilities…" /> : null}
+        {!error && !loading && visiblePlaces.length > 0 ? (
+          <OSMMap
+            ref={mapRef}
+            pins={visiblePlaces.map((place) => ({ id: place.id, latitude: place.latitude, longitude: place.longitude, title: place.name }))}
+            focus={activePlace ? { latitude: activePlace.latitude, longitude: activePlace.longitude } : undefined}
+            bounds={SAN_ISIDRO_BOUNDS}
+            activePinId={activePlaceId}
+            userLocation={userLocation}
+            height={mapHeight}
+            onPinPress={(id) => setTappedPlaceId(id)}
+          />
+        ) : null}
 
         {error ? <View style={styles.mapOverlayCenter}><EmptyState title="Could not load facilities" message={error} /></View> : null}
-
-        {/* Quick Location Badge (top-left) */}
-        <View style={styles.mapLocBadge} pointerEvents="none">
-          <AppIcon name="navigation" size={16} color={M3.primaryContainer} />
-          <Text style={styles.mapLocBadgeText}>San Isidro, Cainta</Text>
-        </View>
-
-        {/* Top-right controls */}
-        <View style={styles.mapControls}>
-          <View style={styles.mapZoomGroup}>
-            <Pressable style={styles.mapControlBtn} accessibilityLabel="Zoom In">
-              <AppIcon name="plus" size={20} color={M3.onSurface} />
-            </Pressable>
-            <View style={styles.mapControlDivider} />
-            <Pressable style={styles.mapControlBtn} accessibilityLabel="Zoom Out">
-              <AppIcon name="minus" size={20} color={M3.onSurface} />
-            </Pressable>
-          </View>
-          <Pressable style={styles.mapControlReticle} accessibilityLabel="Recenter Current Location">
-            <AppIcon name="crosshairs-gps" size={22} color={M3.primaryContainer} />
-          </Pressable>
-          <Pressable style={styles.mapControlLayer} accessibilityLabel="Toggle Accessibility Layers">
-            <AppIcon name="human-wheelchair" size={20} color={M3.secondary} />
-          </Pressable>
-        </View>
-
-        {/* Pulsing current location marker (web mock only) */}
-        {Platform.OS === 'web' ? (
-          <View style={styles.mapPulseWrap} pointerEvents="none">
-            <View style={styles.mapPulseRing} />
-            <View style={styles.mapPulseRingSmall} />
-            <View style={styles.mapPulseCore}><View style={styles.mapPulseDot} /></View>
+        {!error && !loading && places.length > 0 && visiblePlaces.length === 0 ? (
+          <View style={styles.mapOverlayCenter} pointerEvents="box-none">
+            <View style={styles.mapNoResultsCard} pointerEvents="none">
+              <Text style={styles.mapNoResultsTitle}>No matching places</Text>
+              <Text style={styles.mapNoResultsText}>Try a different search or clear the accessibility filters.</Text>
+            </View>
           </View>
         ) : null}
 
-        {/* Floating bottom card */}
+        {/* Search bar (functional: filters pins live) */}
+        <View style={styles.mapSearchBar} pointerEvents="box-none">
+          <AppIcon name="magnify" size={20} color={M3.secondary} />
+          <TextInput
+            style={styles.mapSearchInput}
+            placeholder="Search hospitals, clinics, municipal offices..."
+            placeholderTextColor={M3.secondary}
+            value={query}
+            onChangeText={(text) => {
+              setQuery(text);
+              setTappedPlaceId(null);
+            }}
+            accessibilityLabel="Search accessible places"
+          />
+          {query.length > 0 ? (
+            <Pressable onPress={() => setQuery('')} accessibilityLabel="Clear search" hitSlop={8}>
+              <AppIcon name="close-circle" size={18} color={M3.secondary} />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => setActiveFilter(activeFilter === 'ramp' ? null : 'ramp')}
+              accessibilityLabel="Filter places with ramps"
+              hitSlop={8}
+            >
+              <AppIcon name="tune" size={18} color={activeFilter === 'ramp' ? M3.primaryContainer : M3.secondary} />
+            </Pressable>
+          )}
+        </View>
+
+        {/* Filter chip row (visible when a query or ramp filter is active) */}
+        {query.trim().length > 0 || activeFilter === 'ramp' ? (
+          <View style={styles.mapFilterRow} pointerEvents="box-none">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapFilterRowInner}>
+              {nearbyChips.map((chip) => {
+                const isActive = chip.type === null ? activeFilter === null : activeFilter === chip.type;
+                return (
+                  <Pressable
+                    key={chip.label}
+                    style={[styles.mapFilterChip, isActive && styles.mapFilterChipActive]}
+                    onPress={() => setActiveFilter(chip.type)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Filter by ${chip.label}`}
+                  >
+                    <View style={[styles.mapFilterDot, { backgroundColor: isActive ? M3.onPrimary : chip.dot }]} />
+                    <Text style={[styles.mapFilterChipText, isActive && styles.mapFilterChipTextActive]}>{chip.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* Top-right controls (prototype layout) */}
+        <View style={styles.mapControls}>
+          <View style={styles.mapZoomGroup}>
+            <Pressable style={styles.mapControlBtn} accessibilityLabel="Zoom In" accessibilityRole="button" onPress={() => mapRef.current?.zoomIn()}>
+              <AppIcon name="plus" size={20} color={M3.onSurface} />
+            </Pressable>
+            <View style={styles.mapControlDivider} />
+            <Pressable style={styles.mapControlBtn} accessibilityLabel="Zoom Out" accessibilityRole="button" onPress={() => mapRef.current?.zoomOut()}>
+              <AppIcon name="minus" size={20} color={M3.onSurface} />
+            </Pressable>
+          </View>
+          <Pressable style={styles.mapControlReticle} accessibilityLabel="Recenter Current Location" accessibilityRole="button" onPress={recenterOnUser}>
+            <AppIcon name="crosshairs-gps" size={22} color={M3.primaryContainer} />
+          </Pressable>
+          <Pressable
+            style={[styles.mapControlLayer, accessibleOnly && styles.mapControlLayerActive]}
+            accessibilityLabel="Toggle fully-accessible places only"
+            accessibilityRole="button"
+            onPress={() => setAccessibleOnly((value) => !value)}
+          >
+            <AppIcon name="human-wheelchair" size={20} color={accessibleOnly ? M3.primaryContainer : M3.secondary} />
+          </Pressable>
+        </View>
+
+        {/* Floating bottom card (prototype layout with live distance) */}
         {activePlace ? (
           <View style={styles.mapCard}>
             <View style={styles.mapCardTop}>
@@ -1148,8 +1198,9 @@ export function MapScreen() {
                     })()}</Text>
                   </View>
                   <Text style={styles.mapCardDistance}>{(() => {
-                    const tail = (activePlace.address ?? '').split(',').map((part) => part.trim()).filter(Boolean).slice(-2).join(', ');
-                    return tail ? `• ${tail}` : '• San Isidro, Cainta';
+                    if (!userLocation) return '• San Isidro, Cainta';
+                    const meters = haversineMeters(userLocation, { latitude: activePlace.latitude, longitude: activePlace.longitude });
+                    return meters != null ? `• ${formatDistance(meters)} away` : '• San Isidro, Cainta';
                   })()}</Text>
                 </View>
               </View>
@@ -1410,6 +1461,7 @@ export function DirectionsScreen() {
   const [routeState, setRouteState] = useState<'loading' | 'done' | 'error' | 'permission'>('loading');
   const [result, setResult] = useState<DirectionsResult | null>(null);
   const [message, setMessage] = useState('');
+  const navMapRef = useRef<OSMMapHandle>(null);
   const { user } = useUser();
   const { places } = usePlaces();
 
@@ -1555,10 +1607,11 @@ export function DirectionsScreen() {
 
         {/* Map Canvas + Overlays */}
         <View style={styles.navMapWrap}>
-          {Platform.OS === 'web' || stepsData.length === 0 ? (
+          {stepsData.length === 0 ? (
             <VectorRouteCanvas />
           ) : (
             <OSMMap
+              ref={navMapRef}
               pins={[
                 { id: 'origin', latitude: result?.coords[0]?.latitude ?? 0, longitude: result?.coords[0]?.longitude ?? 0, title: 'Your location', color: '#1e40ff' },
                 { id: 'dest', latitude: destLat ?? 0, longitude: destLng ?? 0, title: destName, color: '#005136' },
@@ -1574,15 +1627,15 @@ export function DirectionsScreen() {
           </View>
 
           <View style={styles.navMapControls}>
-            <Pressable style={styles.navMapReticleBtn} accessibilityLabel="Recenter navigation" accessibilityRole="button">
+            <Pressable style={styles.navMapReticleBtn} accessibilityLabel="Recenter navigation" accessibilityRole="button" onPress={() => navMapRef.current?.recenter()}>
               <AppIcon name="crosshairs-gps" size={20} color={M3.primaryContainer} />
             </Pressable>
             <View style={styles.navMapZoomGroup} >
-              <Pressable style={styles.navMapZoomBtn} accessibilityLabel="Zoom in" accessibilityRole="button">
+              <Pressable style={styles.navMapZoomBtn} accessibilityLabel="Zoom in" accessibilityRole="button" onPress={() => navMapRef.current?.zoomIn()}>
                 <AppIcon name="plus" size={18} color={M3.onSurface} />
               </Pressable>
               <View style={styles.navMapZoomDivider} />
-              <Pressable style={styles.navMapZoomBtn} accessibilityLabel="Zoom out" accessibilityRole="button">
+              <Pressable style={styles.navMapZoomBtn} accessibilityLabel="Zoom out" accessibilityRole="button" onPress={() => navMapRef.current?.zoomOut()}>
                 <AppIcon name="minus" size={18} color={M3.onSurface} />
               </Pressable>
             </View>
@@ -2812,10 +2865,52 @@ const styles = StyleSheet.create({
   mapCanvas: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   mapRealWrap: { flex: 1 },
   mapOverlayCenter: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 30 },
-  mapLocBadge: {
+  mapNoResultsCard: {
+    backgroundColor: withAlpha(M3.surfaceContainerLowest, 0.95),
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    marginHorizontal: 32,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  mapNoResultsTitle: { color: M3.onSurface, fontSize: T['title-sm'], lineHeight: 20, fontWeight: '600', marginBottom: 4 },
+  mapNoResultsText: { color: M3.secondary, fontSize: T['body-sm'], lineHeight: 18, textAlign: 'center' },
+  mapSearchBar: {
     position: 'absolute',
     top: 16,
     left: 16,
+    right: 88,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: withAlpha(M3.surfaceContainerLowest, 0.95),
+    borderWidth: 1,
+    borderColor: withAlpha(M3.outlineVariant, 0.4),
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    zIndex: 15,
+  },
+  mapSearchInput: { flex: 1, minWidth: 0, color: M3.onSurface, fontSize: T['body-sm'], lineHeight: 18, paddingVertical: 0 },
+  mapFilterRow: {
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    right: 88,
+    zIndex: 14,
+  },
+  mapFilterRowInner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
+  mapFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -2823,14 +2918,21 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: withAlpha(M3.surfaceContainerLowest, 0.95),
+    borderWidth: 1,
+    borderColor: withAlpha(M3.outlineVariant, 0.5),
     shadowColor: '#000000',
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
-    elevation: 3,
-    zIndex: 10,
+    elevation: 2,
   },
-  mapLocBadgeText: { color: M3.onSurface, fontSize: T['label-md'], lineHeight: 16, fontWeight: '500' },
+  mapFilterChipActive: {
+    backgroundColor: M3.primaryContainer,
+    borderColor: M3.primaryContainer,
+  },
+  mapFilterDot: { width: 6, height: 6, borderRadius: 3 },
+  mapFilterChipText: { color: M3.onSurface, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600' },
+  mapFilterChipTextActive: { color: M3.onPrimary },
   mapControls: { position: 'absolute', top: 16, right: 16, alignItems: 'center', gap: 8, zIndex: 20 },
   mapZoomGroup: {
     backgroundColor: M3.surfaceContainerLowest,
@@ -2876,43 +2978,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  mapPulseWrap: {
-    position: 'absolute',
-    left: 105,
-    top: 520,
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
+  mapControlLayerActive: {
+    backgroundColor: M3.surfaceContainer,
+    borderWidth: 1.5,
+    borderColor: M3.primaryContainer,
   },
-  mapPulseRing: {
-    position: 'absolute',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: withAlpha(M3.primaryContainer, 0.2),
-  },
-  mapPulseRingSmall: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: withAlpha(M3.primaryContainer, 0.3),
-  },
-  mapPulseCore: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: M3.surfaceContainerLowest,
-    shadowColor: '#000000',
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapPulseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: M3.primaryContainer },
   mapCard: {
     position: 'absolute',
     left: 16,
