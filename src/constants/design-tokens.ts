@@ -70,6 +70,8 @@ export const M3 = {
   onSecondary: color('mat-on-secondary'),
   secondaryContainer: color('mat-secondary-container'),
   onSecondaryContainer: color('mat-on-secondary-container'),
+  secondaryFixed: color('mat-secondary-fixed'),
+  onSecondaryFixed: color('mat-on-secondary-fixed'),
   tertiary: color('mat-tertiary'),
   onTertiary: color('mat-on-tertiary'),
   tertiaryContainer: color('mat-tertiary-container'),

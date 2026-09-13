@@ -119,10 +119,7 @@ export function buildMapHtml(state: MapHtmlState): string {
       L.latLng(__maxArea.sw.lat, __maxArea.sw.lng),
       L.latLng(__maxArea.ne.lat, __maxArea.ne.lng)
     );
-    L.rectangle(areaBounds, {
-      color: '#059669', weight: 2, dashArray: '6 4',
-      fillColor: '#059669', fillOpacity: 0.06
-    }).addTo(map);
+    // Bounds still constrain panning, but no green rectangle is drawn on the map.
     map.setMaxBounds(areaBounds);
   }
 

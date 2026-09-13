@@ -19,5 +19,11 @@ export default function AdminLayout() {
     return <Redirect href="/(tabs)" />;
   }
 
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.canvas } }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.canvas } }}>
+      <Stack.Screen name="tabs" />
+      <Stack.Screen name="index" />
+      <Stack.Screen name="place-form" />
+    </Stack>
+  );
 }

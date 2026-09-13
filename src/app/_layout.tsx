@@ -1,10 +1,13 @@
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RoleProvider } from '@/contexts/role-context';
+import { FilterProvider } from '@/contexts/filter-context';
 import { DesignColors as C } from '@/constants/design-tokens';
 import { clerkPublishableKey } from '@/lib/clerk';
 
@@ -14,8 +17,31 @@ if (!clerkPublishableKey) {
   );
 }
 
+// Inter — the typeface used across the Stitch design system. Loaded once and
+// injected as the base font for every Text/TextInput (per-instance styles win).
+const INTER_FAMILY = 'Inter_400Regular';
+
+function useInterAsDefaultFont(loaded: boolean) {
+  const done = React.useRef(false);
+  if (loaded && !done.current) {
+    done.current = true;
+    for (const Component of [Text, TextInput] as any[]) {
+      const originalRender = Component.render as (...args: unknown[]) => React.ReactElement<{ style?: unknown }>;
+      Component.render = function (this: unknown, ...args: unknown[]) {
+        const element = originalRender.apply(this, args);
+        const existing = (element.props as { style?: unknown }).style;
+        return React.cloneElement(element, {
+          style: [{ fontFamily: INTER_FAMILY }, ...(Array.isArray(existing) ? existing : existing ? [existing] : [])],
+        } as { style?: unknown });
+      };
+    }
+  }
+}
+
 function RootNavigator() {
   const { isLoaded, isSignedIn } = useAuth();
+  const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  useInterAsDefaultFont(fontsLoaded);
 
   return (
     <>
@@ -31,7 +57,7 @@ function RootNavigator() {
         <Stack.Screen name="sso-callback" />
         <Stack.Screen name="admin" redirect={isLoaded && !isSignedIn} />
       </Stack>
-      {!isLoaded && (
+      {(!isLoaded || !fontsLoaded) && (
         <View
           style={{
             position: 'absolute',
@@ -57,7 +83,9 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <RoleProvider>
-          <RootNavigator />
+          <FilterProvider>
+            <RootNavigator />
+          </FilterProvider>
         </RoleProvider>
       </SafeAreaProvider>
     </ClerkProvider>
