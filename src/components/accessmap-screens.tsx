@@ -2324,30 +2324,6 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
 
   return (
     <View style={styles.adminTabBody}>
-      {/* Minimal app bar */}
-      <View style={styles.adminAppBar}>
-        <View style={styles.adminAppBarBrand}>
-          <View style={styles.adminAppBarLogo}>
-            <AppIcon name="human-wheelchair" size={18} color={M3.onPrimary} />
-          </View>
-          <View style={styles.adminAppBarCopy}>
-            <View style={styles.adminAppBarTitleRow}>
-              <Text style={styles.adminAppBarTitle}>AccessMap Cainta</Text>
-              <View style={styles.adminAppBarBadge}><Text style={styles.adminAppBarBadgeText}>Admin</Text></View>
-            </View>
-            <Text style={styles.adminAppBarSubtitle}>San Isidro Civic Registry</Text>
-          </View>
-        </View>
-        <Pressable
-          onPress={() => router.push('/(tabs)/profile')}
-          accessibilityRole="button"
-          accessibilityLabel="Open profile"
-          hitSlop={6}
-        >
-          <Image source={photos.avatar} style={styles.adminAppBarAvatar} />
-        </Pressable>
-      </View>
-
       <ScrollView contentContainerStyle={styles.adminNewScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Title & description */}
         <View style={styles.adminTitleBlock}>
@@ -2769,27 +2745,6 @@ export function AdminAnalyticsTab() {
 
   return (
     <View style={styles.adminTabBody}>
-      <View style={styles.adminAppBar}>
-        <View style={styles.adminAppBarBrand}>
-          <View style={styles.adminAppBarLogo}>
-            <AppIcon name="wheelchair-accessibility" size={18} color={M3.onPrimary} />
-          </View>
-          <View style={styles.adminAppBarCopy}>
-            <View style={styles.adminAppBarTitleRow}>
-              <Text style={styles.adminAppBarTitle}>AccessMap Cainta</Text>
-              <View style={styles.adminAppBarBadge}><Text style={styles.adminAppBarBadgeText}>Admin</Text></View>
-            </View>
-            <Text style={styles.adminAppBarSubtitle}>Municipal Administration</Text>
-          </View>
-        </View>
-        <Pressable
-          onPress={() => router.setParams({ tab: 'settings' })}
-          accessibilityRole="button"
-          accessibilityLabel="Open admin profile settings"
-        >
-          <Image source={photos.avatar} style={styles.adminAppBarAvatar} />
-        </Pressable>
-      </View>
       <ScrollView contentContainerStyle={styles.adminAnalyticsScroll} showsVerticalScrollIndicator={false}>
         {/* Breadcrumb + header + range tabs */}
         <View style={styles.adminTitleBlock}>
