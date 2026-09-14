@@ -1,2 +1,2 @@
-import { CategoryScreen } from '@/components/accessmap-screens';
+import { CategoryScreen } from '@/screens/category-screen';
 export default CategoryScreen;

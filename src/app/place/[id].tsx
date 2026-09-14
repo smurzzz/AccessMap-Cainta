@@ -1,2 +1,2 @@
-import { PlaceDetailsScreen } from '@/components/accessmap-screens';
+import { PlaceDetailsScreen } from '@/screens/place-details-screen';
 export default PlaceDetailsScreen;

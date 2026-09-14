@@ -1,2 +1,2 @@
-import { FilterScreen } from '@/components/accessmap-screens';
+import { FilterScreen } from '@/screens/filter-screen';
 export default FilterScreen;

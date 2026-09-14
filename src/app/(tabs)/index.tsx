@@ -1,2 +1,2 @@
-import { HomeScreen } from '@/components/accessmap-screens';
+import { HomeScreen } from '@/screens/home-screen';
 export default HomeScreen;

@@ -1,2 +1,2 @@
-import { MapScreen } from '@/components/accessmap-screens';
+import { MapScreen } from '@/screens/map-screen';
 export default MapScreen;

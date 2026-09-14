@@ -1,2 +1,2 @@
-import { DirectionsScreen } from '@/components/accessmap-screens';
+import { DirectionsScreen } from '@/screens/directions-screen';
 export default DirectionsScreen;

@@ -1,2 +1,2 @@
-import { AdminTabsScreen } from '@/components/accessmap-screens';
+import { AdminTabsScreen } from '@/screens/admin/admin-tabs';
 export default AdminTabsScreen;

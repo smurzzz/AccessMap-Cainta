@@ -1,2 +1,2 @@
-import { LoginScreen } from '@/components/accessmap-screens';
+import { LoginScreen } from '@/screens/login-screen';
 export default LoginScreen;

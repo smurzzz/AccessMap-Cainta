@@ -1,2 +1,2 @@
-import { OnboardingScreen } from '@/components/accessmap-screens';
+import { OnboardingScreen } from '@/screens/onboarding-screen';
 export default OnboardingScreen;

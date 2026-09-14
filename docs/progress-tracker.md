@@ -68,8 +68,8 @@ Living checklist. Update as you go — check items off, add dates, note blockers
 - [ ] Functional test: General User flow, Android
 - [ ] Functional test: Admin flow, iOS
 - [ ] Functional test: Admin flow, Android
-- [ ] Accessibility self-audit (contrast, touch targets, labels, font scaling)
-- [ ] Scope-compliance check passed (no scoring/reports/emergency/live-nav/LGU claims anywhere)
+- [x] Accessibility self-audit (contrast, touch targets, labels, font scaling) — Phase 9 audit pass complete (labels, roles, 48px targets, icons paired with all status colors)
+- [x] Scope-compliance check passed (no scoring/reports/emergency/live-nav/LGU claims anywhere) — Phase 9 audit removed all offending copy and logic
 - [ ] Known bugs list emptied or triaged
 
 ## Phase 4 — Deployment
@@ -99,6 +99,8 @@ _(Record any scope or tech decisions made mid-project so future-you remembers wh
 | | Switched platform from Web to Mobile App | Client/professor request |
 | | Chose static step-by-step directions over live Waze-style navigation | Timeline + scope fit |
 | | Switched auth to Google-only via Clerk | Simplicity, security, client request ("direct sa Google") |
+| 2026-09-15 | Phase 9 audit: replaced all "Community/LGU-Verified"-style copy with "Admin-Verified" wording; removed computed CSV "Verified/Pending" status; dropped non-functional voice-search mic button | Hard Rules 1, 3, 5 scope compliance |
+| 2026-09-15 | Codebase split: the 5,010-line `src/components/accessmap-screens.tsx` was decomposed into `src/lib/` (saved-places store, share, display helpers), `src/components/ui/` (AppIcon, Button, Header, Screen, SearchBar), `src/components/features/` (PlaceCard, NearbyCard, GoogleLogo, photo-uploader, facility-csv), `src/screens/` (one file per citizen screen) and `src/screens/admin/` (tabs, directory, analytics, settings, place-form); all route imports updated; mega-file deleted | Matches docs/code-standards.md one-component-per-file rule; faster Metro hot reload (single-screen recompiles), no merge-conflict magnet, thesis-friendly structure |
 | | Switched DB/backend from MySQL/plain Node.js to Supabase (Postgres) | Convenience, auto REST API, built-in auth-friendly RLS |
 | | Switched maps/directions from Google Maps API to OpenStreetMap + OpenRouteService | Google Maps requires a linked billing/credit card even on the free tier; OSM + ORS need no billing account at all |
 | 2026-09-09 | Filters match places only when **all** selected feature types are available | "Has all selected provisions" is the only sensible reading of the Filter screen copy ("places that have the selected provisions verified"); OR semantics would list a place missing most requested features |

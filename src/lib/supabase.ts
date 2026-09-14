@@ -29,4 +29,4 @@ export function createSupabaseClient(getAccessToken: () => Promise<string | null
   return createClient(supabaseUrl, supabaseAnonKey, {
     accessToken: getAccessToken,
   });
-}
+} 

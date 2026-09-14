@@ -1,2 +1,2 @@
-import { ProfileScreen } from '@/components/accessmap-screens';
+import { ProfileScreen } from '@/screens/profile-screen';
 export default ProfileScreen;

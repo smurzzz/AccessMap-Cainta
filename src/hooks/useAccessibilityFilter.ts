@@ -78,7 +78,7 @@ export function useAccessibilityFilter(
     return () => {
       cancelled = true;
     };
-  }, [featureTypesKey, category]);
+  }, [featureTypesKey, category, featureTypes]);
 
   return { places, loading, error };
 }

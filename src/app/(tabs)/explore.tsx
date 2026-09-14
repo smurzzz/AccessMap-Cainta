@@ -1,3 +1,3 @@
-import { ExploreScreen } from '@/components/accessmap-screens';
+import { ExploreScreen } from '@/screens/explore-screen';
 
 export default ExploreScreen;
