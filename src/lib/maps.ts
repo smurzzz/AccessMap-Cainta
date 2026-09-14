@@ -54,12 +54,17 @@ type OrsResponse = {
 
 const orsKey = process.env.EXPO_PUBLIC_ORS_API_KEY;
 
-export async function getDirections(opts: {
+// Shared option shape for both routers.
+type DirectionsOpts = {
   originLat: number;
   originLng: number;
   destLat: number;
   destLng: number;
-}): Promise<DirectionsResult> {
+};
+
+// --- OpenRouteService (preferred: true pedestrian profile, needs a key) ---
+
+async function orsDirections(opts: DirectionsOpts): Promise<DirectionsResult> {
   if (!orsKey) {
     throw new Error('Missing EXPO_PUBLIC_ORS_API_KEY. Add it to your .env file.');
   }
@@ -122,6 +127,143 @@ export async function getDirections(opts: {
     steps,
     coords,
   };
+}
+
+// --- OSRM fallback (free public demo server, no API key required) ---
+
+type OsrmManeuver = { type?: string; modifier?: string };
+
+type OsrmStep = {
+  distance?: number;
+  duration?: number;
+  name?: string;
+  maneuver?: OsrmManeuver;
+};
+
+type OsrmResponse = {
+  code?: string;
+  routes?: {
+    distance?: number;
+    duration?: number;
+    geometry?: { coordinates?: number[][] };
+    legs?: { steps?: OsrmStep[] }[];
+  }[];
+};
+
+// Map OSRM maneuver types/modifiers onto the ORS step-type numbers the UI icons use.
+function osrmStepType(maneuver: OsrmManeuver): number {
+  const type = maneuver.type ?? '';
+  const mod = maneuver.modifier ?? '';
+  if (type === 'depart') return 11;
+  if (type === 'arrive') return 10;
+  if (type === 'roundabout' || type === 'rotary') return 7;
+  if (type === 'exit roundabout' || type === 'exit rotary') return 8;
+  if (mod === 'uturn') return 9;
+  switch (mod) {
+    case 'left': return 0;
+    case 'right': return 1;
+    case 'sharp left': return 2;
+    case 'sharp right': return 3;
+    case 'slight left': return 4;
+    case 'slight right': return 5;
+    default: return 6;
+  }
+}
+
+function osrmInstruction(step: OsrmStep): string {
+  const name = step.name ? ` onto ${step.name}` : '';
+  const type = step.maneuver?.type ?? '';
+  const mod = step.maneuver?.modifier ?? '';
+  switch (type) {
+    case 'depart':
+      return step.name ? `Start on ${step.name}` : 'Head out';
+    case 'arrive':
+      return 'Arrive at your destination';
+    case 'turn':
+    case 'end of road':
+      return `Turn ${mod || 'straight'}${name}`;
+    case 'fork':
+      return `Keep ${mod === 'left' ? 'left' : 'right'}${name}`;
+    case 'roundabout':
+    case 'rotary':
+      return `Enter the roundabout${name}`;
+    case 'exit roundabout':
+    case 'exit rotary':
+      return `Exit the roundabout${name}`;
+    case 'new name':
+      return `Continue${name}`;
+    case 'merge':
+      return `Merge${name}`;
+    case 'on ramp':
+      return `Take the ramp${name}`;
+    case 'off ramp':
+      return `Take the exit${name}`;
+    default:
+      return mod === 'uturn' ? `Make a U-turn${name}` : `Continue straight${name}`;
+  }
+}
+
+async function osrmDirections(opts: DirectionsOpts): Promise<DirectionsResult> {
+  const { originLat, originLng, destLat, destLng } = opts;
+  const url =
+    'https://router.project-osrm.org/route/v1/foot' +
+    `/${originLng},${originLat};${destLng},${destLat}` +
+    '?overview=full&steps=true&geometries=geojson';
+
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch {
+    throw new Error('Could not reach the routing service. Check your connection and try again.');
+  }
+
+  if (!response.ok) {
+    throw new Error(`Routing service error (${response.status}).`);
+  }
+
+  const json = (await response.json()) as OsrmResponse;
+  const route = json.routes?.[0];
+  const stepsRaw = route?.legs?.[0]?.steps ?? [];
+
+  if (!route || stepsRaw.length === 0) {
+    throw new Error('No walking route is available between these points.');
+  }
+
+  const steps: RouteStepData[] = stepsRaw.map((step) => ({
+    distance: step.distance ?? 0,
+    duration: step.duration ?? 0,
+    type: osrmStepType(step.maneuver ?? {}),
+    instruction: osrmInstruction(step),
+  }));
+
+  const coords: RouteCoordinate[] = (route.geometry?.coordinates ?? []).map(
+    ([lng, lat]) => ({ latitude: lat, longitude: lng }),
+  );
+
+  return {
+    totalDistance: Math.round(route.distance ?? steps.reduce((sum, s) => sum + s.distance, 0)),
+    totalDuration: Math.round(route.duration ?? steps.reduce((sum, s) => sum + s.duration, 0)),
+    steps,
+    coords,
+  };
+}
+
+export async function getDirections(opts: DirectionsOpts): Promise<DirectionsResult> {
+  // ORS gives the true pedestrian profile when a key is configured; otherwise
+  // (or if ORS fails) fall back to the free keyless OSRM router so directions
+  // always work.
+  if (orsKey) {
+    try {
+      return await orsDirections(opts);
+    } catch (orsError) {
+      try {
+        return await osrmDirections(opts);
+      } catch {
+        throw orsError instanceof Error ? orsError : new Error('Could not load directions. Please try again.');
+      }
+    }
+  }
+  return osrmDirections(opts);
 }
 
 export function regionForCoords(coords: RouteCoordinate[]) {

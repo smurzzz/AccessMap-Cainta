@@ -10,7 +10,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import OSMMap, { type OSMMapHandle } from '@/components/osm-map';
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ComponentProps } from 'react';
 import {
   ActivityIndicator,
@@ -20,7 +20,6 @@ import {
   ScrollView,
   Share,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -54,7 +53,7 @@ import { DEFAULT_FILTERS, useFilters, type AppFilters } from '@/contexts/filter-
 import { usePlace } from '@/hooks/usePlace';
 import { usePlaces } from '@/hooks/usePlaces';
 import { useRole } from '@/contexts/role-context';
-import { supabaseBucketName, supabasePublicUrl } from '@/lib/supabase';
+import { supabase, supabaseBucketName, supabasePublicUrl } from '@/lib/supabase';
 import {
   formatDistance,
   formatDuration,
@@ -72,8 +71,100 @@ import type {
 
 const tabsRoute = '/(tabs)' as Href;
 // Local persistence keys for the profile screen (device keychain / browser storage).
-const PROFILE_PREFS_KEY = 'accessmap.profile.prefs.v1';
 const PROFILE_SAVED_KEY = 'accessmap.profile.saved.v1';
+
+// --- Shared saved-places store ---
+// One bookmark list shared by the map card, place details, and the profile's
+// Saved Places section. Bookmarking anywhere syncs everywhere (and persists).
+type SavedPlacesState = { ids: readonly string[]; hydrated: boolean };
+let savedPlacesState: SavedPlacesState = { ids: [], hydrated: false };
+const savedPlacesListeners = new Set<() => void>();
+
+function emitSavedPlacesChanged() {
+  for (const listener of savedPlacesListeners) listener();
+}
+
+function setSavedPlacesState(next: SavedPlacesState) {
+  savedPlacesState = next;
+  emitSavedPlacesChanged();
+}
+
+// Loads the persisted saved list once; resolves when the store is ready.
+function hydrateSavedPlaces(): Promise<void> {
+  if (savedPlacesState.hydrated) return Promise.resolve();
+  setSavedPlacesState({ ...savedPlacesState, hydrated: true });
+  return SecureStore.getItemAsync(PROFILE_SAVED_KEY)
+    .then((stored) => {
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as unknown;
+          if (Array.isArray(parsed)) {
+            setSavedPlacesState({
+              ids: parsed.filter((value): value is string => typeof value === 'string'),
+              hydrated: true,
+            });
+          }
+        } catch {
+          // ignore malformed stored saved list
+        }
+      }
+    })
+    .catch(() => {
+      // storage unavailable — run with an in-memory list for this session
+    });
+}
+
+function persistSavedPlaces(ids: readonly string[]) {
+  SecureStore.setItemAsync(PROFILE_SAVED_KEY, JSON.stringify(ids)).catch(() => {
+    // storage unavailable — saved places stay in memory for this session
+  });
+}
+
+function toggleSavedPlaceInStore(placeId: string) {
+  const ids = savedPlacesState.ids.includes(placeId)
+    ? savedPlacesState.ids.filter((value) => value !== placeId)
+    : [...savedPlacesState.ids, placeId];
+  setSavedPlacesState({ ids, hydrated: true });
+  persistSavedPlaces(ids);
+}
+
+function useSavedPlaces() {
+  const state = useSyncExternalStore(
+    (listener) => {
+      savedPlacesListeners.add(listener);
+      void hydrateSavedPlaces();
+      return () => savedPlacesListeners.delete(listener);
+    },
+    () => savedPlacesState,
+    () => savedPlacesState,
+  );
+  return { savedIds: state.ids, hydrated: state.hydrated, toggleSaved: toggleSavedPlaceInStore };
+}
+
+// Opens the native share sheet with a message; on web it falls back to the
+// Web Share API, then to copying the message to the clipboard.
+async function shareAppMessage(title: string, message: string): Promise<void> {
+  try {
+    if (Platform.OS === 'web' && typeof navigator.share === 'function') {
+      await navigator.share({ title, text: message, url: window.location.href });
+      return;
+    }
+    await Share.share({ title, message });
+  } catch (shareError: unknown) {
+    if (shareError instanceof Error && shareError.name === 'AbortError') return;
+    // Last resort on web: copy the details to the clipboard.
+    if (Platform.OS === 'web' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(message);
+        Alert.alert('Link copied', 'Details were copied to your clipboard.');
+        return;
+      } catch {
+        // fall through to the generic failure alert
+      }
+    }
+    Alert.alert('Share failed', 'Could not share this. Please try again.');
+  }
+}
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 const categoryIcon: Record<PlaceCategory, IconName> = {
@@ -1079,7 +1170,7 @@ export function MapScreen() {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [tappedPlaceId, setTappedPlaceId] = useState<string | null>(params.place ?? null);
-  const [savedIds, setSavedIds] = useState<Record<string, boolean>>({});
+  const { savedIds, toggleSaved } = useSavedPlaces();
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [query, setQuery] = useState('');
   const [accessibleOnly, setAccessibleOnly] = useState(false);
@@ -1114,8 +1205,6 @@ export function MapScreen() {
   const activePlaceId = params.place ?? tappedPlaceId ?? (visiblePlaces[0]?.id ?? null);
   const activePlace = visiblePlaces.find((place) => place.id === activePlaceId) ?? null;
   const mapHeight = Math.max(240, height - insets.top - insets.bottom - 68);
-
-  const toggleSaved = (id: string) => setSavedIds((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const recenterOnUser = () => {
     (async () => {
@@ -1250,8 +1339,8 @@ export function MapScreen() {
                     <Text style={styles.mapCardCategoryText}>{homeCategoryLabel[activePlace.category]}</Text>
                     <AppIcon name="arrow-right" size={14} color={M3.primaryContainer} />
                   </Pressable>
-                  <Pressable onPress={() => toggleSaved(activePlace.id)} accessibilityLabel="Save location" hitSlop={8}>
-                    <AppIcon name={savedIds[activePlace.id] ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds[activePlace.id] ? M3.primaryContainer : M3.secondary} />
+                  <Pressable onPress={() => toggleSaved(activePlace.id)} accessibilityLabel={savedIds.includes(activePlace.id) ? 'Remove bookmark' : 'Save location'} hitSlop={8}>
+                    <AppIcon name={savedIds.includes(activePlace.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.includes(activePlace.id) ? M3.primaryContainer : M3.secondary} />
                   </Pressable>
                 </View>
                 <Text style={styles.mapCardTitle} numberOfLines={1}>{activePlace.name}</Text>
@@ -1298,7 +1387,8 @@ export function PlaceDetailsScreen() {
   const { place, loading, error } = usePlace(id);
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [saved, setSaved] = useState(false);
+  const { savedIds: savedPlaceIds, toggleSaved: toggleSavedPlace } = useSavedPlaces();
+  const saved = place ? savedPlaceIds.includes(place.id) : false;
   const [mapSectionTop, setMapSectionTop] = useState<number | null>(null);
   const [bottomBarHeight, setBottomBarHeight] = useState(136);
 
@@ -1314,27 +1404,7 @@ export function PlaceDetailsScreen() {
 
   const sharePlace = async () => {
     if (!place) return;
-    const message = `Check out ${place.name} on AccessMap — ${place.address}`;
-    try {
-      if (Platform.OS === 'web' && typeof navigator.share === 'function') {
-        await navigator.share({ title: place.name, text: message, url: window.location.href });
-        return;
-      }
-      await Share.share({ title: place.name, message });
-    } catch (shareError: unknown) {
-      if (shareError instanceof Error && shareError.name === 'AbortError') return;
-      // Last resort on web: copy the details to the clipboard.
-      if (Platform.OS === 'web' && navigator.clipboard) {
-        try {
-          await navigator.clipboard.writeText(message);
-          Alert.alert('Link copied', 'Place details were copied to your clipboard.');
-          return;
-        } catch {
-          // fall through to the generic failure alert
-        }
-      }
-      Alert.alert('Share failed', 'Could not share this place. Please try again.');
-    }
+    await shareAppMessage(place.name, `Check out ${place.name} on AccessMap — ${place.address}`);
   };
 
   return (
@@ -1385,7 +1455,9 @@ export function PlaceDetailsScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: saved }}
                     hitSlop={6}
-                    onPress={() => setSaved((value) => !value)}
+                    onPress={() => {
+                      if (place) toggleSavedPlace(place.id);
+                    }}
                   >
                     <AppIcon
                       name={saved ? 'bookmark' : 'bookmark-outline'}
@@ -1844,7 +1916,14 @@ export function DirectionsScreen() {
         {/* Navigation Action Bar */}
         <View style={styles.navActionCard}>
           <View style={styles.navActionTop}>
-            <Pressable style={styles.navShareBtn} accessibilityRole="button">
+            <Pressable
+              style={styles.navShareBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Share walking directions to ${destName}`}
+              onPress={() => {
+                void shareAppMessage(destName, `Walking directions to ${destName} (${destAddress}) on AccessMap`);
+              }}
+            >
               <AppIcon name="share-variant" size={18} color={M3.primaryContainer} />
               <Text style={styles.navShareText}>Share</Text>
             </Pressable>
@@ -1856,10 +1935,6 @@ export function DirectionsScreen() {
           <View style={styles.navActionButtons}>
             <Pressable style={styles.navExitBtn} onPress={() => router.back()} accessibilityRole="button">
               <Text style={styles.navExitText}>Exit Navigation</Text>
-            </Pressable>
-            <Pressable style={styles.navPauseBtn} accessibilityRole="button">
-              <AppIcon name="pause" size={18} color={M3.onPrimary} />
-              <Text style={styles.navPauseText}>Pause Route</Text>
             </Pressable>
           </View>
         </View>
@@ -1874,80 +1949,20 @@ export function ProfileScreen() {
   const { signOut } = useClerk();
   const { places } = usePlaces();
   const clerk = useClerk();
-  const [prefs, setPrefs] = useState({ ramp: true, restroom: true, elevator: false });
-  // `null` means "not customized yet" — the screen falls back to the first two catalog places.
-  const [savedIds, setSavedIds] = useState<string[] | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  // Profile state persists locally (keychain / browser storage); no backend table required.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [storedPrefs, storedSaved] = await Promise.all([
-          SecureStore.getItemAsync(PROFILE_PREFS_KEY),
-          SecureStore.getItemAsync(PROFILE_SAVED_KEY),
-        ]);
-        if (cancelled) return;
-        if (storedPrefs) {
-          try {
-            const parsed = JSON.parse(storedPrefs) as Partial<typeof prefs>;
-            setPrefs((prev) => ({ ...prev, ...parsed }));
-          } catch {
-            // ignore malformed stored preferences and keep defaults
-          }
-        }
-        if (storedSaved) {
-          try {
-            const parsed = JSON.parse(storedSaved) as unknown;
-            if (Array.isArray(parsed)) setSavedIds(parsed.filter((value): value is string => typeof value === 'string'));
-          } catch {
-            // ignore malformed stored saved list
-          }
-        }
-      } catch {
-        // storage unavailable — run with in-memory defaults
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!loaded) return;
-    SecureStore.setItemAsync(PROFILE_PREFS_KEY, JSON.stringify(prefs)).catch(() => {
-      // storage unavailable — preferences stay in memory for this session
-    });
-  }, [prefs, loaded]);
-
-  useEffect(() => {
-    if (!loaded || savedIds == null) return;
-    SecureStore.setItemAsync(PROFILE_SAVED_KEY, JSON.stringify(savedIds)).catch(() => {
-      // storage unavailable — saved places stay in memory for this session
-    });
-  }, [savedIds, loaded]);
+  const { savedIds: storedSavedIds, hydrated, toggleSaved: toggleSavePlace } = useSavedPlaces();
 
   const userName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Civic contributor';
   const email = user?.emailAddresses?.[0]?.emailAddress;
   const avatar = user?.imageUrl ? { uri: user.imageUrl } : photos.avatar;
 
-  // Saved list: the user's persisted picks, or the first two catalog places as a starting set.
-  const effectiveSavedIds = savedIds ?? places.slice(0, 2).map((place) => place.id);
+  // Saved list: the user's persisted picks, or the first two catalog places as a starting set
+  // until the store hydrates.
+  const effectiveSavedIds = hydrated ? storedSavedIds : places.slice(0, 2).map((place) => place.id);
   const savedPlaces = effectiveSavedIds
     .map((savedId) => places.find((place) => place.id === savedId))
     .filter((place): place is Place => !!place)
     .slice(0, 2);
   const savedCount = effectiveSavedIds.filter((savedId) => places.some((place) => place.id === savedId)).length;
-
-  const toggleSavePlace = (placeId: string) => {
-    setSavedIds((prev) => {
-      const base = prev ?? places.slice(0, 2).map((place) => place.id);
-      return base.includes(placeId) ? base.filter((value) => value !== placeId) : [...base, placeId];
-    });
-  };
 
   const onSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out of AccessMap?', [
@@ -1965,8 +1980,6 @@ export function ProfileScreen() {
     ]);
   };
 
-  const togglePref = (key: 'ramp' | 'restroom' | 'elevator') => setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
-
   const showInfoDialog = (title: string, message: string) => Alert.alert(title, message, [{ text: 'OK' }]);
 
   // Opens Clerk's account portal when the platform supports it; falls back to a dialog.
@@ -1982,21 +1995,12 @@ export function ProfileScreen() {
     showInfoDialog('Account Settings', 'Manage your account details, email, and password from your profile.');
   };
 
-  const switchColors = {
-    trackColor: { false: '#e2e8f0', true: M3.primaryContainer },
-    thumbColor: '#ffffff',
-    ios_backgroundColor: '#e2e8f0',
-  } as const;
-
   return (
     <SafeAreaView style={styles.profileSafe} edges={['top']}>
       {/* Minimal sticky header */}
       <View style={styles.profileHeader}>
         <View style={styles.profileHeaderRow}>
           <Text style={styles.profileHeaderTitle}>Profile</Text>
-          <View style={styles.profileVerifiedBadge}>
-            <Text style={styles.profileVerifiedText}>Verified</Text>
-          </View>
         </View>
         <Pressable
           style={styles.profileSettingsBtn}
@@ -2025,7 +2029,7 @@ export function ProfileScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Edit profile details"
               >
-                <Text style={styles.profileEditLink}>Edit profile</Text>
+                <Text style={styles.profileEditLink}>Edit</Text>
               </Pressable>
             </View>
             <Text style={styles.profileEmail} numberOfLines={1}>{email ?? 'Signed in with your account'}</Text>
@@ -2034,73 +2038,6 @@ export function ProfileScreen() {
                 <AppIcon name="map-marker" size={10} color={M3.outlineVariant} />
                 <Text style={styles.profileLocText}>San Isidro, Cainta</Text>
               </View>
-            </View>
-            <View style={styles.profileMetaRow}>
-              <View style={styles.profileCommunityPill}>
-                <Text style={styles.profileCommunityText}>{isAdmin ? 'Administrator' : 'Community Member'}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.profileDivider} />
-
-        {/* Accessibility Preferences */}
-        <View style={styles.profileSection}>
-          <View style={styles.profileSectionHeader}>
-            <Text style={styles.profileSectionTitle}>Accessibility Preferences</Text>
-            <View style={styles.profileAutoFilterPill}>
-              <Text style={styles.profileAutoFilterText}>Auto-filtering active</Text>
-            </View>
-          </View>
-          <View style={styles.profilePrefList}>
-            <View style={styles.profilePrefRow}>
-              <View style={styles.profilePrefLeft}>
-                <View style={styles.profilePrefIconBox}>
-                  <AppIcon name="wheelchair-accessibility" size={18} color={M3.primaryContainer} />
-                </View>
-                <View style={styles.profilePrefTexts}>
-                  <Text style={styles.profilePrefTitle}>Step-Free / Ramp Priority</Text>
-                  <Text style={styles.profilePrefSub}>Prioritize verified ramps & level routes</Text>
-                </View>
-              </View>
-              <Switch
-                value={prefs.ramp}
-                onValueChange={() => togglePref('ramp')}
-                {...switchColors}
-              />
-            </View>
-            <View style={styles.profilePrefRow}>
-              <View style={styles.profilePrefLeft}>
-                <View style={styles.profilePrefIconBox}>
-                  <AppIcon name="toilet" size={18} color={M3.primaryContainer} />
-                </View>
-                <View style={styles.profilePrefTexts}>
-                  <Text style={styles.profilePrefTitle}>Accessible Restroom</Text>
-                  <Text style={styles.profilePrefSub}>Requires grab rails & barrier-free access</Text>
-                </View>
-              </View>
-              <Switch
-                value={prefs.restroom}
-                onValueChange={() => togglePref('restroom')}
-                {...switchColors}
-              />
-            </View>
-            <View style={styles.profilePrefRow}>
-              <View style={styles.profilePrefLeft}>
-                <View style={styles.profilePrefIconBoxMuted}>
-                  <AppIcon name="elevator-passenger" size={18} color={M3.onSurfaceVariant} />
-                </View>
-                <View style={styles.profilePrefTexts}>
-                  <Text style={styles.profilePrefTitle}>Elevator Required</Text>
-                  <Text style={styles.profilePrefSub}>Multi-story structures with operational lifts</Text>
-                </View>
-              </View>
-              <Switch
-                value={prefs.elevator}
-                onValueChange={() => togglePref('elevator')}
-                {...switchColors}
-              />
             </View>
           </View>
         </View>
@@ -2132,10 +2069,6 @@ export function ProfileScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Open details for ${place.name}`}
                 >
-                  <View style={styles.profileStatusRow}>
-                    <View style={styles.profileStatusDot} />
-                    <Text style={styles.profileStatusText}>Verified Step-Free</Text>
-                  </View>
                   <Text style={styles.profileSavedName} numberOfLines={1}>{place.name}</Text>
                   <Text style={styles.profileSavedAddress} numberOfLines={1}>{place.address}</Text>
                 </Pressable>
@@ -2307,11 +2240,6 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
     return place.name.toLowerCase().includes(trimmed) || (place.address ?? '').toLowerCase().includes(trimmed);
   });
 
-  const categoryCounts = CATEGORY_ORDER.reduce<Record<string, number>>((counts, category) => {
-    counts[category] = places.filter((place) => place.category === category).length;
-    return counts;
-  }, {});
-
   const adminFilterPills: { value: PlaceCategory | 'all'; label: string }[] = [
     { value: 'all', label: 'All' },
     { value: 'hospital', label: 'Hospitals' },
@@ -2320,55 +2248,21 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
     { value: 'school', label: 'Schools' },
   ];
 
-  const metrics = adminMetrics(places);
-
   return (
     <View style={styles.adminTabBody}>
       <ScrollView contentContainerStyle={styles.adminNewScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {/* Title & description */}
-        <View style={styles.adminTitleBlock}>
-          <View style={styles.adminTitleRow}>
-            <View style={styles.adminTitleDotRow}>
-              <View style={styles.adminTitleDot} />
-              <Text style={styles.adminTitleEyebrow}>Admin Console</Text>
-            </View>
-            <Text style={styles.adminTitleWard}>San Isidro Ward</Text>
-          </View>
-          <Text style={styles.adminTitle}>Admin Facility Directory</Text>
-          <Text style={styles.adminTitleBody}>Manage and verify physical accessibility listings for civic public services.</Text>
-        </View>
-
-        {/* Metric summary cards */}
-        <View style={styles.adminMetricsRow}>
-          <View style={styles.adminMetricCard}>
-            <Text style={styles.adminMetricLabel}>Total Places</Text>
-            <View style={styles.adminMetricValueRow}>
-              <Text style={styles.adminMetricValue}>{metrics.total}</Text>
-              <Text style={styles.adminMetricUnit}>sites</Text>
-            </View>
-          </View>
-          <View style={styles.adminMetricCard}>
-            <Text style={styles.adminMetricLabelOk}>Verified</Text>
-            <View style={styles.adminMetricValueRow}>
-              <Text style={styles.adminMetricValueOk}>{metrics.verified}</Text>
-              <AppIcon name="check-decagram" size={14} color="#059669" />
-            </View>
-          </View>
-          <View style={styles.adminMetricCard}>
-            <Text style={styles.adminMetricLabelWarn}>Pending</Text>
-            <View style={styles.adminMetricValueRow}>
-              <Text style={styles.adminMetricValueWarn}>{metrics.pending}</Text>
-              <AppIcon name="clock-outline" size={14} color="#d97706" />
-            </View>
-          </View>
+        {/* Title & live count */}
+        <View style={styles.adminDirTitleRow}>
+          <Text style={styles.adminDirTitle}>Admin Directory</Text>
+          <Text style={styles.adminDirCount}>{loading ? '…' : `${places.length} listed`}</Text>
         </View>
 
         {/* Search */}
         <View style={styles.adminSearchBox}>
-          <AppIcon name="magnify" size={20} color="#94a3b8" />
+          <AppIcon name="magnify" size={18} color="#94a3b8" />
           <TextInput
             style={styles.adminSearchInput}
-            placeholder="Search facility name, street, or department..."
+            placeholder="Search facilities or streets..."
             placeholderTextColor="#94a3b8"
             value={query}
             onChangeText={setQuery}
@@ -2385,7 +2279,6 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adminPillsRow}>
           {adminFilterPills.map((pill) => {
             const active = categoryFilter === pill.value;
-            const count = pill.value === 'all' ? places.length : (categoryCounts[pill.value] ?? 0);
             return (
               <Pressable
                 key={pill.value}
@@ -2396,9 +2289,6 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
                 accessibilityLabel={`Filter by ${pill.label}`}
               >
                 <Text style={[styles.adminPillText, active && styles.adminPillTextActive]}>{pill.label}</Text>
-                <View style={[styles.adminPillCount, active && styles.adminPillCountActive]}>
-                  <Text style={[styles.adminPillCountText, active && styles.adminPillCountTextActive]}>{count}</Text>
-                </View>
               </Pressable>
             );
           })}
@@ -2419,14 +2309,9 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
               <View style={styles.adminFacilityCard} key={place.id}>
                 <View style={styles.adminFacilityTop}>
                   <View style={styles.adminFacilityMeta}>
-                    <View style={styles.adminFacilityBadgesRow}>
-                      <View style={styles.adminFacilityCategory}><Text style={styles.adminFacilityCategoryText}>{CATEGORY_SHORT_LABELS[place.category]}</Text></View>
-                      <View style={styles.adminFacilityVerified}>
-                        <AppIcon name="check-decagram" size={13} color="#059669" />
-                        <Text style={styles.adminFacilityVerifiedText}>Verified</Text>
-                      </View>
-                    </View>
+                    <Text style={styles.adminFacilityCategory}>{CATEGORY_SHORT_LABELS[place.category]}</Text>
                     <Text style={styles.adminFacilityName} numberOfLines={2}>{place.name}</Text>
+                    <Text style={styles.adminFacilityAddress} numberOfLines={1}>{place.address ?? 'Address not set'}</Text>
                   </View>
                   <View style={styles.adminFacilityActions}>
                     <Pressable
@@ -2436,7 +2321,7 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
                       accessibilityLabel={`Edit ${place.name}`}
                       hitSlop={4}
                     >
-                      <AppIcon name="pencil" size={18} color={M3.secondary} />
+                      <AppIcon name="pencil" size={18} color="#94a3b8" />
                     </Pressable>
                     {deleting === place.id ? (
                       <View style={styles.adminFacilityActionBtn}><ActivityIndicator size="small" color="#dc2626" /></View>
@@ -2448,29 +2333,20 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
                         accessibilityLabel={`Delete ${place.name}`}
                         hitSlop={4}
                       >
-                        <AppIcon name="delete-outline" size={18} color="#f87171" />
+                        <AppIcon name="delete-outline" size={18} color="#94a3b8" />
                       </Pressable>
                     )}
                   </View>
                 </View>
-                <View style={styles.adminFacilityAddressBlock}>
-                  <View style={styles.adminFacilityAddressRow}>
-                    <AppIcon name="map-marker" size={14} color="#94a3b8" />
-                    <Text style={styles.adminFacilityAddress} numberOfLines={1}>{place.address ?? 'Address not set'}</Text>
-                  </View>
-                  <Text style={styles.adminFacilityUpdated}>Updated {new Date(place.updated_at).toLocaleDateString()}</Text>
-                </View>
                 <View style={styles.adminFacilityBadges}>
                   {availableFeatures.slice(0, 3).map((feature) => (
                     <View style={styles.adminBadgeOk} key={feature.id}>
-                      <AppIcon name="check" size={12} color="#059669" />
-                      <Text style={styles.adminBadgeOkText}>{FEATURE_LABELS[feature.feature_type]}</Text>
+                      <Text style={styles.adminBadgeOkText}>{featureShortLabels[feature.feature_type]}</Text>
                     </View>
                   ))}
                   {unavailableFeatures.slice(0, 1).map((feature) => (
                     <View style={styles.adminBadgeNo} key={feature.id}>
-                      <AppIcon name="close" size={12} color="#94a3b8" />
-                      <Text style={styles.adminBadgeNoText}>No {FEATURE_LABELS[feature.feature_type]}</Text>
+                      <Text style={styles.adminBadgeNoText}>No {featureShortLabels[feature.feature_type]}</Text>
                     </View>
                   ))}
                   {availableFeatures.length === 0 && unavailableFeatures.length === 0 ? (
@@ -2491,8 +2367,8 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
           accessibilityRole="button"
           accessibilityLabel="Add new facility to directory"
         >
-          <AppIcon name="plus" size={20} color={M3.onPrimary} />
-          <Text style={styles.adminAddBtnText}>Add New Facility</Text>
+          <AppIcon name="plus" size={18} color={M3.onPrimary} />
+          <Text style={styles.adminAddBtnText}>Add Facility</Text>
         </Pressable>
       </View>
     </View>
@@ -2500,15 +2376,6 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
 }
 
 type PhotoAsset = { uri: string; fileName?: string | null; mimeType?: string | null };
-
-/** Verified = step-free entry + at least 3 available features; everything else is pending audit. */
-function adminMetrics(places: Place[]): { total: number; verified: number; pending: number } {
-  const verified = places.filter((place) => {
-    const available = (place.accessibility_features ?? []).filter((feature) => feature.status === 'available');
-    return available.some((feature) => feature.feature_type === 'entrance') && available.length >= 3;
-  }).length;
-  return { total: places.length, verified, pending: places.length - verified };
-}
 
 /** Shared app bar for the admin add/edit facility form. */
 function AdminFormHeader({ isEdit }: { isEdit: boolean }) {
@@ -2553,32 +2420,6 @@ const DEFAULT_FEATURES: Record<FeatureType, AccessibilityStatus> = {
   other: 'unavailable',
 };
 
-type AnalyticsRange = 'month' | 'quarter' | 'all';
-
-const ANALYTICS_RANGES: { key: AnalyticsRange; label: string; days: number }[] = [
-  { key: 'month', label: 'This Month', days: 30 },
-  { key: 'quarter', label: 'Last Quarter', days: 90 },
-  { key: 'all', label: 'All Time', days: 0 },
-];
-
-const BARRIER_ICONS = {
-  ramp: 'trending-up',
-  restroom: 'door-closed',
-  other: 'texture',
-} as const;
-
-const CATEGORY_CHART_ICONS: Record<PlaceCategory, IconName> = {
-  hospital: 'hospital-box',
-  health_center: 'shield-plus',
-  government: 'bank',
-  school: 'school',
-  mall: 'storefront',
-  church: 'church',
-  park: 'tree',
-};
-
-const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
-
 const csvCell = (value: string | number | null | undefined) => {
   const text = value === null || value === undefined ? '' : String(value);
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -2621,95 +2462,228 @@ function buildComplianceCsv(placesToExport: Place[]): string {
   return [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
 }
 
+/** Minimal analytics dashboard: live facility metrics for San Isidro, Cainta. */
+const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
+
 export function AdminAnalyticsTab() {
-  const { places, loading, error } = usePlaces();
-  const [range, setRange] = useState<AnalyticsRange>('all');
+  const { places, loading, error, reload } = usePlaces();
+  const [justRefreshed, setJustRefreshed] = useState(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+
+  // Real-time: re-fetch whenever any facility row changes in Supabase.
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return undefined;
+    const channel = client
+      .channel('admin-analytics-places')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, () => reload())
+      .subscribe();
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, [reload]);
+
+  const facilityCount = places.length;
+  const categoryCount = useMemo(() => new Set(places.map((place) => place.category)).size, [places]);
+  const featuresLogged = useMemo(
+    () => places.reduce((sum, place) => sum + (place.accessibility_features ?? []).length, 0),
+    [places],
+  );
+  const recentUpdates = useMemo(() => places.filter((place) => daysAgo(place.updated_at) <= 30).length, [places]);
+  const recentUpdatesWeek = useMemo(() => places.filter((place) => daysAgo(place.updated_at) <= 7).length, [places]);
+
+  const openDirectory = () => router.setParams({ tab: 'directory' });
+
+  const metricCards: { id: string; label: string; value: number; note: string; icon: IconName; onPress?: () => void }[] = [
+    {
+      id: 'facilities',
+      label: 'Total Facilities',
+      value: facilityCount,
+      note: 'Registered places',
+      icon: 'office-building-outline',
+      onPress: openDirectory,
+    },
+    {
+      id: 'categories',
+      label: 'Categories',
+      value: categoryCount,
+      note: 'Facility types',
+      icon: 'view-grid-outline',
+      onPress: openDirectory,
+    },
+    {
+      id: 'features',
+      label: 'Features Logged',
+      value: featuresLogged,
+      note: 'Accessibility markers',
+      icon: 'format-list-checks',
+    },
+    {
+      id: 'recent',
+      label: 'Recent Updates',
+      value: recentUpdates,
+      note: recentUpdatesWeek > 0 ? `${recentUpdatesWeek} in the last 7 days` : 'Updated this month',
+      icon: 'update',
+    },
+  ];
+
+  const onManualRefresh = () => {
+    reload();
+    setJustRefreshed(true);
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => setJustRefreshed(false), 2000);
+  };
+
+  const summaryRows: { id: string; label: string; value: string; onPress?: () => void }[] = [
+    { id: 'status', label: 'Status', value: 'Active Monitoring' },
+    { id: 'coverage', label: 'Coverage', value: 'San Isidro District' },
+    {
+      id: 'categories',
+      label: 'Categories',
+      value:
+        categoryCount === 0
+          ? 'None registered'
+          : categoryCount === 1
+            ? '1 facility type'
+            : `${categoryCount} facility types`,
+      onPress: openDirectory,
+    },
+  ];
+
+  return (
+    <View style={styles.adminTabBody}>
+      <ScrollView contentContainerStyle={styles.adminAnalyticsScroll} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.adminAnalyticsHeader}>
+          <View style={styles.adminAnalyticsHeaderRow}>
+            <Text style={styles.adminAnalyticsHeading}>Facility Analytics</Text>
+            <Pressable
+              style={[styles.adminAnalyticsLivePill, justRefreshed ? styles.adminAnalyticsLivePillSynced : null]}
+              onPress={onManualRefresh}
+              accessibilityRole="button"
+              accessibilityLabel="Real-time updates active. Tap to refresh now"
+            >
+              <Text style={[styles.adminAnalyticsLiveText, justRefreshed ? styles.adminAnalyticsLiveTextSynced : null]}>
+                {loading ? 'Syncing…' : justRefreshed ? 'Updated' : 'Real-time'}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.adminTitleBody}>High-level accessibility summary for San Isidro, Cainta.</Text>
+        </View>
+
+        {/* Metric cards */}
+        <View style={styles.adminAnalyticsCards}>
+          {metricCards.map((card) => {
+            const Copy = (
+              <>
+                <Text style={styles.adminAnalyticsCardLabel}>{card.label}</Text>
+                <Text style={styles.adminAnalyticsCardValue}>{loading ? '—' : card.value}</Text>
+                <Text style={styles.adminAnalyticsCardNote}>{card.note}</Text>
+              </>
+            );
+            const Icon = (
+              <View style={styles.adminAnalyticsCardIcon}>
+                <AppIcon name={card.icon} size={20} color={M3.primaryContainer} />
+              </View>
+            );
+            return card.onPress ? (
+              <Pressable
+                key={card.id}
+                style={styles.adminAnalyticsCard}
+                onPress={card.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={`${card.label}: ${loading ? 'loading' : card.value}. ${card.note}. Open Directory`}
+              >
+                <View style={styles.adminAnalyticsCardCopy}>{Copy}</View>
+                {Icon}
+              </Pressable>
+            ) : (
+              <View key={card.id} style={styles.adminAnalyticsCard}>
+                <View style={styles.adminAnalyticsCardCopy}>{Copy}</View>
+                {Icon}
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Summary card */}
+        <View style={styles.adminAnalyticsSummary}>
+          {summaryRows.map((row) => {
+            const RowContent = (
+              <>
+                <Text style={styles.adminAnalyticsSummaryLabel}>{row.label}</Text>
+                <View style={styles.adminAnalyticsSummaryValueRow}>
+                  <Text style={styles.adminAnalyticsSummaryValue} numberOfLines={1}>
+                    {row.value}
+                  </Text>
+                  {row.onPress ? <AppIcon name="chevron-down" size={14} color={M3.outline} /> : null}
+                </View>
+              </>
+            );
+            return row.onPress ? (
+              <Pressable
+                key={row.id}
+                style={styles.adminAnalyticsSummaryRow}
+                onPress={row.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={`${row.label}: ${row.value}. Open Directory`}
+              >
+                {RowContent}
+              </Pressable>
+            ) : (
+              <View key={row.id} style={styles.adminAnalyticsSummaryRow}>{RowContent}</View>
+            );
+          })}
+        </View>
+
+        {/* States */}
+        {error ? <EmptyState title="Could not load analytics" message={error} /> : null}
+        {!error && !loading && facilityCount === 0 ? (
+          <EmptyState
+            title="No facilities yet"
+            message="Add facilities in the Directory and this dashboard will update in real time."
+          />
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+export function AdminSettingsTab() {
+  const { user } = useUser();
+  const { isAdmin, syncing } = useRole();
+  const { signOut } = useClerk();
+  const clerk = useClerk();
+  const { places } = usePlaces();
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [prefs, setPrefs] = useState({ notifications: true, highContrast: true });
   const [exporting, setExporting] = useState<'idle' | 'preparing' | 'done'>('idle');
   const exportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     if (exportTimer.current) clearTimeout(exportTimer.current);
   }, []);
 
-  const rangedPlaces = useMemo(() => {
-    const active = ANALYTICS_RANGES.find((item) => item.key === range) ?? ANALYTICS_RANGES[2];
-    if (active.days === 0) return places;
-    return places.filter((place) => daysAgo(place.updated_at) <= active.days);
-  }, [places, range]);
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  };
 
-  const metrics = adminMetrics(rangedPlaces);
-  const total = metrics.total;
-  const coveragePct = total === 0 ? 0 : Math.round((metrics.verified / total) * 100);
-  const coverageColor = coveragePct >= 50 ? M3.primaryContainer : M3.secondary;
+  const userName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Administrator';
 
-  const rampCount = rangedPlaces.filter((place) =>
-    (place.accessibility_features ?? []).some((feature) => feature.feature_type === 'ramp' && feature.status === 'available'),
-  ).length;
-  const crCount = rangedPlaces.filter((place) =>
-    (place.accessibility_features ?? []).some((feature) => feature.feature_type === 'restroom' && feature.status === 'available'),
-  ).length;
-  const rampPct = total === 0 ? 0 : Math.round((rampCount / total) * 100);
-  const crPct = total === 0 ? 0 : Math.round((crCount / total) * 100);
-  const newThisMonth = rangedPlaces.filter((place) => daysAgo(place.updated_at) <= 30).length;
-
-  const barriers = useMemo(() => {
-    const countMissing = (type: FeatureType) =>
-      rangedPlaces.filter((place) =>
-        !(place.accessibility_features ?? []).some((feature) => feature.feature_type === type && feature.status === 'available'),
-      ).length;
-    const rows: { key: string; title: string; note: string; icon: string; tone: 'error' | 'primary'; count: number }[] = [
-      {
-        key: 'tactile',
-        title: 'Missing tactile ground indicators',
-        note: 'Paving work queued with Engineering',
-        icon: BARRIER_ICONS.other,
-        tone: 'primary',
-        count: countMissing('other'),
-      },
-      {
-        key: 'restroom',
-        title: 'No compliant accessible restroom',
-        note: 'Blocks manual & power wheelchairs',
-        icon: BARRIER_ICONS.restroom,
-        tone: 'error',
-        count: countMissing('restroom'),
-      },
-      {
-        key: 'ramp',
-        title: 'Missing ramp / step-free access',
-        note: 'Requires engineering civil reprofile',
-        icon: BARRIER_ICONS.ramp,
-        tone: 'error',
-        count: countMissing('ramp'),
-      },
-    ];
-    return rows.filter((row) => row.count > 0).sort((a, b) => b.count - a.count);
-  }, [rangedPlaces]);
-  const flaggedSites = new Set(
-    rangedPlaces
-      .filter((place) => (place.accessibility_features ?? []).filter((feature) => feature.status === 'available').length < 3)
-      .map((place) => place.id),
-  ).size;
-
-  const categoryRows = useMemo(
-    () =>
-      CATEGORY_ORDER.map((category) => {
-        const categoryPlaces = rangedPlaces.filter((place) => place.category === category);
-        const verified = categoryPlaces.filter((place) =>
-          (place.accessibility_features ?? []).filter((feature) => feature.status === 'available').length >= 3,
-        ).length;
-        const pct = categoryPlaces.length === 0 ? 0 : Math.round((verified / categoryPlaces.length) * 100);
-        return { category, verified, total: categoryPlaces.length, pct };
-      }).filter((row) => row.total > 0),
-    [rangedPlaces],
-  );
-
-  const onExport = async () => {
-    if (exporting !== 'idle') return;
+  const runExport = async () => {
+    if (exporting !== 'idle' || places.length === 0) return;
     setExporting('preparing');
-    const fileName = `accessmap-compliance-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    const fileName = `accessmap-facility-report-${new Date().toISOString().slice(0, 10)}.csv`;
     try {
-      const csv = buildComplianceCsv(rangedPlaces);
+      const csv = buildComplianceCsv(places);
       if (Platform.OS === 'web') {
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -2727,7 +2701,7 @@ export function AdminAnalyticsTab() {
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(file.uri, {
             mimeType: 'text/csv',
-            dialogTitle: 'Export Municipal Compliance Report',
+            dialogTitle: 'Export AccessMap facility report',
             UTI: 'public.comma-separated-values-text',
           });
         } else {
@@ -2735,292 +2709,14 @@ export function AdminAnalyticsTab() {
         }
       }
       setExporting('done');
+      showToast('Report downloaded (CSV)');
       exportTimer.current = setTimeout(() => setExporting('idle'), 2200);
     } catch (exportError) {
       console.warn('Export failed', exportError);
       setExporting('idle');
-      Alert.alert('Export failed', 'Could not generate the compliance report. Please try again.');
+      Alert.alert('Export failed', 'Could not generate the report. Please try again.');
     }
   };
-
-  return (
-    <View style={styles.adminTabBody}>
-      <ScrollView contentContainerStyle={styles.adminAnalyticsScroll} showsVerticalScrollIndicator={false}>
-        {/* Breadcrumb + header + range tabs */}
-        <View style={styles.adminTitleBlock}>
-          <View style={styles.adminAnalyticsCrumbRow}>
-            <View style={styles.adminTitleDotRow}>
-              <View style={styles.adminTitleDot} />
-              <Text style={[styles.adminTitleEyebrow, styles.adminAnalyticsCrumbPrimary]}>Municipal Monitoring • Cainta</Text>
-            </View>
-          </View>
-          <Text style={styles.adminAnalyticsTitle}>Accessibility Analytics</Text>
-          <Text style={styles.adminTitleBody}>
-            Public infrastructure accessibility metrics and compliance tracking under Batas Pambansa Blg. 344.
-          </Text>
-          <View style={styles.adminAnalyticsRangeWrap}>
-            {ANALYTICS_RANGES.map((item) => {
-              const active = item.key === range;
-              return (
-                <Pressable
-                  key={item.key}
-                  style={[styles.adminAnalyticsRangeTab, active ? styles.adminAnalyticsRangeTabActive : null]}
-                  onPress={() => setRange(item.key)}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Reporting range: ${item.label}`}
-                >
-                  <Text style={[styles.adminAnalyticsRangeText, active ? styles.adminAnalyticsRangeTextActive : null]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* KPI cards (2x2) */}
-        <View style={styles.adminAnalyticsKpiGrid}>
-          <View style={styles.adminAnalyticsKpi}>
-            <View style={styles.adminAnalyticsKpiHead}>
-              <Text style={styles.adminAnalyticsKpiLabel}>Audited Sites</Text>
-              <View style={styles.adminAnalyticsKpiIconTinted}>
-                <AppIcon name="domain" size={16} color={M3.onSecondaryFixed} />
-              </View>
-            </View>
-            <Text style={styles.adminAnalyticsKpiValue}>{total}</Text>
-            <View style={styles.adminAnalyticsKpiTrendRow}>
-              {newThisMonth > 0 ? (
-                <>
-                  <AppIcon name="trending-up" size={13} color={M3.tertiary} />
-                  <Text style={styles.adminAnalyticsKpiTrend}>+{newThisMonth} this month</Text>
-                </>
-              ) : (
-                <Text style={styles.adminAnalyticsKpiNote}>No updates this month</Text>
-              )}
-            </View>
-          </View>
-          <View style={styles.adminAnalyticsKpi}>
-            <View style={styles.adminAnalyticsKpiHead}>
-              <Text style={styles.adminAnalyticsKpiLabel}>BP 344 Compliant</Text>
-              <View style={styles.adminAnalyticsKpiIconGreen}>
-                <AppIcon name="check-decagram" size={16} color={M3.onTertiaryFixed} />
-              </View>
-            </View>
-            <Text style={[styles.adminAnalyticsKpiValue, { color: coverageColor }]}>{coveragePct}%</Text>
-            <View style={styles.adminAnalyticsKpiTrendRow}>
-              <Text style={styles.adminAnalyticsKpiNote}>{coveragePct >= 80 ? 'High civic grade' : 'Improving civic grade'}</Text>
-            </View>
-          </View>
-          <View style={styles.adminAnalyticsKpi}>
-            <View style={styles.adminAnalyticsKpiHead}>
-              <Text style={styles.adminAnalyticsKpiLabel}>Ramp / Step-Free</Text>
-              <View style={styles.adminAnalyticsKpiIconGray}>
-                <AppIcon name="wheelchair-accessibility" size={16} color={M3.onSurface} />
-              </View>
-            </View>
-            <View style={styles.adminAnalyticsKpiValueRow}>
-              <Text style={styles.adminAnalyticsKpiValue}>{rampCount}</Text>
-              <Text style={styles.adminAnalyticsKpiDenominator}>/ {total}</Text>
-            </View>
-            <View style={styles.adminAnalyticsKpiTrendRow}>
-              <Text style={styles.adminAnalyticsKpiNote}>{rampPct.toFixed(1)}% network coverage</Text>
-            </View>
-          </View>
-          <View style={styles.adminAnalyticsKpi}>
-            <View style={styles.adminAnalyticsKpiHead}>
-              <Text style={styles.adminAnalyticsKpiLabel}>Accessible CRs</Text>
-              <View style={styles.adminAnalyticsKpiIconGray}>
-                <AppIcon name="toilet" size={16} color={M3.onSurface} />
-              </View>
-            </View>
-            <View style={styles.adminAnalyticsKpiValueRow}>
-              <Text style={styles.adminAnalyticsKpiValue}>{crCount}</Text>
-              <Text style={styles.adminAnalyticsKpiDenominator}>/ {total}</Text>
-            </View>
-            <View style={styles.adminAnalyticsKpiTrendRow}>
-              <Text style={styles.adminAnalyticsKpiNote}>{crPct.toFixed(1)}% verified compliant</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Category compliance rates */}
-        <View style={styles.adminAnalyticsPanel}>
-          <View style={styles.adminAnalyticsPanelHead}>
-            <View style={styles.adminAnalyticsPanelHeadLeft}>
-              <AppIcon name="chart-bar" size={20} color={M3.primaryContainer} />
-              <Text style={styles.adminAnalyticsPanelTitle}>Category Compliance Rates</Text>
-            </View>
-            <Text style={styles.adminAnalyticsPanelMeta}>{categoryRows.length} Sectors</Text>
-          </View>
-          <View style={styles.adminAnalyticsSectors}>
-            {categoryRows.map(({ category, verified: verifiedCount, total: categoryTotal, pct }) => {
-              const best = Math.max(...categoryRows.map((row) => row.pct));
-              return (
-                <Pressable
-                  key={category}
-                  style={styles.adminAnalyticsSector}
-                  onPress={() => router.setParams({ tab: 'directory', category })}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${CATEGORY_LABELS[category]}: ${pct}% compliant. Open in Directory`}
-                >
-                  <View style={styles.adminAnalyticsSectorHead}>
-                    <View style={styles.adminAnalyticsSectorName}>
-                      <AppIcon
-                        name={CATEGORY_CHART_ICONS[category]}
-                        size={18}
-                        color={pct === best ? M3.tertiary : pct >= 50 ? M3.primaryContainer : M3.secondary}
-                      />
-                      <Text style={styles.adminAnalyticsSectorTitle}>{CATEGORY_LABELS[category]}</Text>
-                    </View>
-                    <Text style={styles.adminAnalyticsSectorValue}>
-                      <Text style={pct >= 50 ? styles.adminAnalyticsSectorPct : styles.adminAnalyticsSectorPctLow}>{pct}%</Text>
-                      {categoryTotal > 0 ? <Text style={styles.adminAnalyticsSectorCount}> ({verifiedCount}/{categoryTotal})</Text> : null}
-                    </Text>
-                  </View>
-                  <View style={styles.adminAnalyticsSectorTrack}>
-                    <View
-                      style={[
-                        styles.adminAnalyticsSectorFill,
-                        { width: `${pct}%`, backgroundColor: pct >= 50 ? M3.primaryContainer : M3.primaryFixedDim },
-                      ]}
-                    />
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Priority remediation barriers */}
-        <View style={styles.adminAnalyticsPanel}>
-          <View style={styles.adminAnalyticsPanelHead}>
-            <View style={styles.adminAnalyticsPanelHeadLeft}>
-              <AppIcon name="alert" size={20} color={M3.error} />
-              <Text style={styles.adminAnalyticsPanelTitle}>Priority Remediation Barriers</Text>
-            </View>
-            {flaggedSites > 0 ? (
-              <Pressable
-                style={styles.adminAnalyticsFlagPill}
-                onPress={() => router.setParams({ tab: 'directory' })}
-                accessibilityRole="button"
-                accessibilityLabel={`${flaggedSites} sites flagged. Open Directory`}
-              >
-                <Text style={styles.adminAnalyticsFlagText}>{flaggedSites} Active Flagged</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <View style={styles.adminAnalyticsBarriers}>
-            {barriers.length === 0 ? (
-              <View style={styles.adminAnalyticsBarrierRow}>
-                <View style={styles.adminAnalyticsBarrierIconWrap}><AppIcon name="check-decagram" size={18} color={M3.tertiary} /></View>
-                <View style={styles.adminAnalyticsBarrierCopy}>
-                  <Text style={styles.adminAnalyticsBarrierTitle}>No active barriers flagged</Text>
-                  <Text style={styles.adminAnalyticsBarrierNote}>Every audited site meets the current checklist.</Text>
-                </View>
-              </View>
-            ) : (
-              barriers.map((barrier) => (
-                <Pressable
-                  key={barrier.key}
-                  style={styles.adminAnalyticsBarrierRow}
-                  onPress={() => router.setParams({ tab: 'directory' })}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${barrier.title}: ${barrier.count} sites. Open Directory`}
-                >
-                  <View style={styles.adminAnalyticsBarrierIconWrap}>
-                    <AppIcon
-                      name={barrier.icon as IconName}
-                      size={18}
-                      color={barrier.tone === 'error' ? M3.error : M3.primaryContainer}
-                    />
-                  </View>
-                  <View style={styles.adminAnalyticsBarrierCopy}>
-                    <Text style={styles.adminAnalyticsBarrierTitle}>{barrier.title}</Text>
-                    <Text style={styles.adminAnalyticsBarrierNote}>{barrier.note}</Text>
-                  </View>
-                  <View style={styles.adminAnalyticsBarrierCountWrap}>
-                    <Text
-                      style={
-                        barrier.tone === 'error'
-                          ? styles.adminAnalyticsBarrierCountError
-                          : styles.adminAnalyticsBarrierCountPrimary
-                      }
-                    >
-                      {barrier.count}
-                    </Text>
-                    <Text style={styles.adminAnalyticsBarrierSites}>{barrier.count === 1 ? 'site' : 'sites'}</Text>
-                  </View>
-                </Pressable>
-              ))
-            )}
-          </View>
-        </View>
-
-        {/* Export CTA */}
-        <Pressable
-          style={styles.adminAnalyticsExportBtn}
-          onPress={onExport}
-          accessibilityRole="button"
-          accessibilityLabel="Export Municipal Compliance Report in PDF or CSV format"
-        >
-          {exporting === 'preparing' ? (
-            <>
-              <AppIcon name="sync" size={20} color={M3.onPrimary} />
-              <Text style={styles.adminAnalyticsExportText}>Preparing Package...</Text>
-            </>
-          ) : exporting === 'done' ? (
-            <>
-              <AppIcon name="check-circle" size={20} color={M3.onPrimary} />
-              <Text style={styles.adminAnalyticsExportText}>Report Downloaded (CSV)</Text>
-            </>
-          ) : (
-            <>
-              <AppIcon name="download" size={20} color={M3.onPrimary} />
-              <Text style={styles.adminAnalyticsExportText}>Export Municipal Compliance Report</Text>
-            </>
-          )}
-        </Pressable>
-        <View style={styles.adminAnalyticsExportNote}>
-          <AppIcon name="shield-check" size={15} color={M3.outline} />
-          <Text style={styles.adminAnalyticsExportNoteText}>
-            Official summary for Cainta PWD Affairs Office (PDAO) & Engineering Office.
-          </Text>
-        </View>
-
-        {error ? <EmptyState title="Could not load analytics" message={error} /> : null}
-        {!error && loading ? <LoadingState label="Loading analytics…" /> : null}
-        {!error && !loading && total === 0 ? (
-          <EmptyState title="Nothing to analyze yet" message="Add facilities to the directory to see compliance metrics." />
-        ) : null}
-      </ScrollView>
-    </View>
-  );
-}
-
-export function AdminSettingsTab() {
-  const { user } = useUser();
-  const { isAdmin, syncing } = useRole();
-  const { signOut } = useClerk();
-  const clerk = useClerk();
-  const { places } = usePlaces();
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [syncingNow, setSyncingNow] = useState(false);
-  const [prefs, setPrefs] = useState({ highContrast: true, autoSave: true });
-
-  useEffect(() => () => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-  }, []);
-
-  const showToast = (message: string) => {
-    setToast(message);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2600);
-  };
-
-  const userName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Administrator';
-  const metrics = adminMetrics(places);
 
   const onSignOut = () => {
     Alert.alert('Sign out', 'Sign out of the Admin Console?', [
@@ -3050,16 +2746,6 @@ export function AdminSettingsTab() {
     Alert.alert('Edit Admin Profile', 'Manage your name, email, and photo from your Clerk account profile.', [{ text: 'OK' }]);
   };
 
-  const runSync = () => {
-    if (syncingNow) return;
-    setSyncingNow(true);
-    showToast('Connecting to Cainta Municipal GIS Server...');
-    setTimeout(() => {
-      setSyncingNow(false);
-      showToast(`Sync complete: ${metrics.total}/${metrics.total} audits verified`);
-    }, 1200);
-  };
-
   return (
     <View style={styles.adminTabBody}>
       {/* Toast notification */}
@@ -3077,10 +2763,10 @@ export function AdminSettingsTab() {
           </View>
           <View style={styles.adminAppBarCopy}>
             <View style={styles.adminAppBarTitleRow}>
-              <Text style={styles.adminAppBarTitle}>AccessMap Cainta</Text>
+              <Text style={styles.adminAppBarTitle}>Settings</Text>
               <View style={styles.adminAppBarBadge}><Text style={styles.adminAppBarBadgeText}>Admin</Text></View>
             </View>
-            <Text style={styles.adminAppBarSubtitle}>Municipal Administration</Text>
+            <Text style={styles.adminAppBarSubtitle}>Account Settings</Text>
           </View>
         </View>
         <View style={styles.adminAvatarChipWrap}>
@@ -3094,19 +2780,15 @@ export function AdminSettingsTab() {
           <View style={styles.adminIdCardRow}>
             <View style={styles.adminIdAvatarWrap}>
               <Image source={user?.imageUrl ? { uri: user.imageUrl } : photos.avatar} style={styles.adminIdAvatar} contentFit="cover" />
-              <View style={styles.adminIdBadge}>
-                <AppIcon name="check-decagram" size={13} color={M3.onTertiaryContainer} />
-              </View>
             </View>
             <View style={styles.adminIdCopy}>
               <View style={styles.adminIdRolePill}>
-                <Text style={styles.adminIdRoleText}>{syncing ? 'Checking role…' : isAdmin ? 'Municipal Accessibility Inspector' : 'Community Member'}</Text>
+                <Text style={styles.adminIdRoleText}>{syncing ? 'Checking role…' : isAdmin ? 'Municipal Administrator' : 'Community Member'}</Text>
               </View>
               <Text style={styles.adminIdName} numberOfLines={1}>{userName}</Text>
-              <Text style={styles.adminIdOrg} numberOfLines={1}>Cainta PWD Affairs Office (PDAO) & Municipal Engineering</Text>
               <View style={styles.adminIdLocRow}>
                 <AppIcon name="map-marker-radius" size={14} color={M3.onSecondaryContainer} />
-                <Text style={styles.adminIdLocText} numberOfLines={1}>Barangay San Isidro & Town Center</Text>
+                <Text style={styles.adminIdLocText} numberOfLines={1}>Municipal Hall, Cainta</Text>
               </View>
             </View>
           </View>
@@ -3117,115 +2799,40 @@ export function AdminSettingsTab() {
             accessibilityLabel="Edit admin profile"
           >
             <AppIcon name="pencil" size={17} color={M3.primaryContainer} />
-            <Text style={styles.adminIdEditText}>Edit Admin Profile</Text>
+            <Text style={styles.adminIdEditText}>Edit Profile</Text>
           </Pressable>
         </View>
 
-        {/* Section 2: Inspector credentials & status */}
-        <View style={styles.adminSectionHeadRow}>
-          <Text style={styles.adminSectionHead}>Inspector Credentials & Status</Text>
-          <View style={styles.adminAuthStatusRow}>
-            <View style={styles.adminAuthStatusDot} />
-            <Text style={styles.adminAuthStatusText}>Authorized</Text>
-          </View>
-        </View>
-        <View style={styles.adminCredGrid}>
-          <View style={styles.adminCredCell}>
-            <Text style={styles.adminCredLabel}>Sites Audited</Text>
-            <Text style={styles.adminCredValue}>{metrics.total}</Text>
-            <Text style={styles.adminCredSub} numberOfLines={1}>Cainta Proper</Text>
-          </View>
-          <View style={styles.adminCredCell}>
-            <Text style={styles.adminCredLabel}>Verified</Text>
-            <Text style={[styles.adminCredValue, styles.adminCredValuePrimary]}>{metrics.verified}</Text>
-            <Text style={[styles.adminCredSub, styles.adminCredSubOk]}>BP 344 Certified</Text>
-          </View>
-          <View style={styles.adminCredCell}>
-            <Text style={styles.adminCredLabel}>Pending</Text>
-            <Text style={styles.adminCredValue}>{metrics.pending}</Text>
-            <Text style={styles.adminCredSub} numberOfLines={1}>In queue</Text>
-          </View>
-          <View style={styles.adminCredCell}>
-            <Text style={styles.adminCredLabel}>Validity</Text>
-            <Text style={styles.adminCredValue}>2026</Text>
-            <Text style={[styles.adminCredSub, styles.adminCredSubOk]}>Active</Text>
-          </View>
-        </View>
-
-        {/* Section 3: Governance & field tools */}
-        <Text style={styles.adminSectionLabel}>Governance & Field Tools</Text>
+        {/* Section 2: General settings */}
+        <Text style={styles.adminSectionLabel}>General Settings</Text>
         <View style={styles.adminToolList}>
-          <Pressable
-            style={styles.adminToolRow}
-            onPress={() => showToast('Loading Batas Pambansa 344 Manual...')}
-            accessibilityRole="button"
-            accessibilityLabel="Open field audit protocol and BP 344 guidelines"
-          >
-            <View style={styles.adminToolIcon}><AppIcon name="book-open-page-variant" size={19} color={M3.onSecondaryFixed} /></View>
-            <View style={styles.adminToolCopy}>
-              <Text style={styles.adminToolTitle}>Field Audit Protocol</Text>
-              <Text style={styles.adminToolSub} numberOfLines={1}>Batas Pambansa Blg. 344 Technical Provisions</Text>
-            </View>
-            <AppIcon name="chevron-right" size={18} color="#747689" />
-          </Pressable>
-          <View style={styles.adminToolDivider} />
+          {/* System Notifications toggle */}
           <View style={styles.adminToolRow}>
-            <View style={styles.adminToolIcon}><AppIcon name="cloud-sync" size={19} color={M3.onSecondaryFixed} /></View>
+            <View style={styles.adminToolIconMuted}><AppIcon name="bell-outline" size={19} color={M3.onSurfaceVariant} /></View>
             <View style={styles.adminToolCopy}>
-              <Text style={styles.adminToolTitle}>Offline Survey Sync</Text>
-              <View style={styles.adminToolSubRow}>
-                <View style={styles.adminSyncDot} />
-                <Text style={styles.adminToolSubOk} numberOfLines={1}>All {metrics.total} audit packages synchronized</Text>
-              </View>
+              <Text style={styles.adminToolTitle}>System Notifications</Text>
+              <Text style={styles.adminToolSub} numberOfLines={1}>Receive compliance alerts and audit updates</Text>
             </View>
             <Pressable
-              style={styles.adminSyncBtn}
-              onPress={runSync}
-              disabled={syncingNow}
-              accessibilityRole="button"
-              accessibilityLabel="Sync offline data now"
+              style={[styles.adminMiniSwitch, prefs.notifications ? styles.adminMiniSwitchOn : styles.adminMiniSwitchOff]}
+              onPress={() => {
+                setPrefs((current) => ({ ...current, notifications: !current.notifications }));
+                showToast(!prefs.notifications ? 'System notifications enabled' : 'System notifications muted');
+              }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: prefs.notifications }}
+              accessibilityLabel="Toggle system notifications"
             >
-              <AppIcon name="refresh" size={15} color={M3.primaryContainer} />
-              <Text style={styles.adminSyncBtnText}>Sync</Text>
+              <View style={[styles.adminMiniKnob, prefs.notifications && styles.adminMiniKnobOn]} />
             </Pressable>
           </View>
           <View style={styles.adminToolDivider} />
-          <Pressable
-            style={styles.adminToolRow}
-            onPress={() => showToast('Opening Municipal Inspector Registry...')}
-            accessibilityRole="button"
-            accessibilityLabel="Manage inspector accounts and permissions"
-          >
-            <View style={styles.adminToolIcon}><AppIcon name="badge-account-outline" size={19} color={M3.onSecondaryFixed} /></View>
-            <View style={styles.adminToolCopy}>
-              <Text style={styles.adminToolTitle}>Inspector Permissions</Text>
-              <Text style={styles.adminToolSub} numberOfLines={1}>Manage municipal field auditors</Text>
-            </View>
-            <AppIcon name="chevron-right" size={18} color="#747689" />
-          </Pressable>
-          <View style={styles.adminToolDivider} />
-          <Pressable
-            style={styles.adminToolRow}              onPress={() => router.push('/(tabs)/profile')}
-              accessibilityRole="button"
-              accessibilityLabel="Open your profile and account details"
-          >
-            <View style={styles.adminToolIcon}><AppIcon name="history" size={19} color={M3.onSecondaryFixed} /></View>
-            <View style={styles.adminToolCopy}>
-              <Text style={styles.adminToolTitle}>Audit Log & Timestamps</Text>
-              <Text style={styles.adminToolSub} numberOfLines={1}>Immutable municipal records & updates</Text>
-            </View>
-            <AppIcon name="chevron-right" size={18} color="#747689" />
-          </Pressable>
-        </View>
-
-        {/* Section 4: Preferences & security */}
-        <Text style={styles.adminSectionLabel}>Preferences & Security</Text>
-        <View style={styles.adminToolList}>
+          {/* Dark / high-contrast toggle */}
           <View style={styles.adminToolRow}>
             <View style={styles.adminToolIconMuted}><AppIcon name="contrast" size={19} color={M3.onSurfaceVariant} /></View>
             <View style={styles.adminToolCopy}>
-              <Text style={styles.adminToolTitle}>High-Contrast Field Mode</Text>
-              <Text style={styles.adminToolSub} numberOfLines={1}>Maximum legibility under direct sunlight</Text>
+              <Text style={styles.adminToolTitle}>Dark / High-Contrast Mode</Text>
+              <Text style={styles.adminToolSub} numberOfLines={1}>Improve visibility in outdoor sunlight</Text>
             </View>
             <Pressable
               style={[styles.adminMiniSwitch, prefs.highContrast ? styles.adminMiniSwitchOn : styles.adminMiniSwitchOff]}
@@ -3235,47 +2842,54 @@ export function AdminSettingsTab() {
               }}
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs.highContrast }}
-              accessibilityLabel="Toggle high-contrast field mode"
+              accessibilityLabel="Toggle dark or high-contrast display mode"
             >
               <View style={[styles.adminMiniKnob, prefs.highContrast && styles.adminMiniKnobOn]} />
             </Pressable>
           </View>
           <View style={styles.adminToolDivider} />
-          <View style={styles.adminToolRow}>
-            <View style={styles.adminToolIconMuted}><AppIcon name="content-save-check-outline" size={19} color={M3.onSurfaceVariant} /></View>
-            <View style={styles.adminToolCopy}>
-              <Text style={styles.adminToolTitle}>Auto-Save Draft Audits</Text>
-              <Text style={styles.adminToolSub} numberOfLines={1}>Caches inspection findings every 30 seconds</Text>
-            </View>
-            <Pressable
-              style={[styles.adminMiniSwitch, prefs.autoSave ? styles.adminMiniSwitchOn : styles.adminMiniSwitchOff]}
-              onPress={() => {
-                setPrefs((current) => ({ ...current, autoSave: !current.autoSave }));
-                showToast(!prefs.autoSave ? 'Audit drafts auto-saving enabled' : 'Audit drafts auto-saving paused');
-              }}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: prefs.autoSave }}
-              accessibilityLabel="Toggle auto-save draft audits"
-            >
-              <View style={[styles.adminMiniKnob, prefs.autoSave && styles.adminMiniKnobOn]} />
-            </Pressable>
-          </View>
-          <View style={styles.adminToolDivider} />
+          {/* Account security */}
           <Pressable
             style={styles.adminToolRow}
-            onPress={() => showToast('Security PIN verification prompt opened')}
+            onPress={openAccountPortal}
             accessibilityRole="button"
-            accessibilityLabel="Change security PIN or passcode"
+            accessibilityLabel="Account security and password"
           >
-            <View style={styles.adminToolIconMuted}><AppIcon name="lock-reset" size={19} color={M3.onSurfaceVariant} /></View>
+            <View style={styles.adminToolIconMuted}><AppIcon name="lock-outline" size={19} color={M3.onSurfaceVariant} /></View>
             <View style={styles.adminToolCopy}>
-              <Text style={styles.adminToolTitle}>Change Security PIN</Text>
-              <Text style={styles.adminToolSub} numberOfLines={1}>Required for publishing public accessibility marks</Text>
+              <Text style={styles.adminToolTitle}>Account Security & Password</Text>
+              <Text style={styles.adminToolSub} numberOfLines={1}>Update login credentials and passkeys</Text>
+            </View>
+            <AppIcon name="chevron-right" size={18} color="#747689" />
+          </Pressable>
+          <View style={styles.adminToolDivider} />
+          {/* Data backup & export */}
+          <Pressable
+            style={styles.adminToolRow}
+            onPress={runExport}
+            accessibilityRole="button"
+            accessibilityLabel="Data backup and export"
+          >
+            <View style={styles.adminToolIconMuted}>
+              {exporting === 'preparing' ? (
+                <ActivityIndicator size="small" color={M3.primaryContainer} />
+              ) : (
+                <AppIcon name="download" size={19} color={M3.onSurfaceVariant} />
+              )}
+            </View>
+            <View style={styles.adminToolCopy}>
+              <Text style={styles.adminToolTitle}>Data Backup & Export</Text>
+              <Text style={styles.adminToolSub} numberOfLines={1}>
+                {exporting === 'preparing'
+                  ? 'Generating municipal CSV report…'
+                  : exporting === 'done'
+                    ? 'Report downloaded'
+                    : 'Export municipal reports and CSV data'}
+              </Text>
             </View>
             <AppIcon name="chevron-right" size={18} color="#747689" />
           </Pressable>
         </View>
-
         {/* Section 5: Role switcher & console exit */}
         <Pressable
           style={styles.adminCitizenBtn}
@@ -3293,12 +2907,11 @@ export function AdminSettingsTab() {
           accessibilityLabel="Sign out of admin console"
         >
           <AppIcon name="logout" size={17} color={M3.error} />
-          <Text style={styles.adminSignOutText}>Sign Out of Admin Console</Text>
+          <Text style={styles.adminSignOutText}>Sign Out</Text>
         </Pressable>
 
         <View style={styles.adminFooterSign}>
-          <Text style={styles.adminFooterSignMain}>Municipality of Cainta • PWD Affairs Office</Text>
-          <Text style={styles.adminFooterSignSub}>BP 344 Digital Compliance Registry v2.4</Text>
+          <Text style={styles.adminFooterSignSub}>AccessMap Admin Portal • v1.0</Text>
         </View>
       </ScrollView>
     </View>
@@ -4678,17 +4291,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   navExitText: { color: M3.onSurface, fontSize: T['link-md'], lineHeight: 18, fontWeight: '600' },
-  navPauseBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: M3.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  navPauseText: { color: M3.onPrimary, fontSize: T['link-md'], lineHeight: 18, fontWeight: '600' },
 profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   profileHeader: {
     flexDirection: 'row',
@@ -4702,8 +4304,6 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   },
   profileHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   profileHeaderTitle: { color: M3.onSurface, fontSize: 20, lineHeight: 26, fontWeight: '700', letterSpacing: -0.3 },
-  profileVerifiedBadge: { backgroundColor: '#f1f5f9', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
-  profileVerifiedText: { color: '#94a3b8', fontSize: 10, lineHeight: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' },
   profileSettingsBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   profileScrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
   profileHeroCard: {
@@ -4727,41 +4327,16 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   profileMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, minWidth: 0 },
   profileLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ffffff', borderWidth: 1, borderColor: withAlpha('#e2e8f0', 0.6), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, flexShrink: 1 },
   profileLocText: { color: '#475569', fontSize: 11, lineHeight: 15, fontWeight: '500' },
-  profileCommunityPill: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#dbeafe' },
-  profileCommunityText: { color: '#1d4ed8', fontSize: 10, lineHeight: 14, fontWeight: '500' },
   profileDivider: { height: 1, backgroundColor: '#f1f5f9', marginTop: 24, marginBottom: 20 },
   profileSection: { minWidth: 0 },
   profileSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 },
   profileSectionTitle: { color: '#94a3b8', fontSize: 11, lineHeight: 16, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', flexShrink: 1 },
-  profileAutoFilterPill: { backgroundColor: '#eff6ff', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#dbeafe' },
-  profileAutoFilterText: { color: M3.primaryContainer, fontSize: 11, lineHeight: 14, fontWeight: '500' },
   profileViewAll: { color: M3.primaryContainer, fontSize: 12, lineHeight: 16, fontWeight: '600' },
-  profilePrefList: { gap: 12 },
-  profilePrefRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    padding: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    backgroundColor: M3.surfaceContainerLowest,
-  },
-  profilePrefLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
-  profilePrefIconBox: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#dbeafe', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  profilePrefIconBoxMuted: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  profilePrefTexts: { flexShrink: 1 },
-  profilePrefTitle: { color: M3.onSurface, fontSize: 14, lineHeight: 19, fontWeight: '600' },
-  profilePrefSub: { color: '#94a3b8', fontSize: 11, lineHeight: 15, marginTop: 1 },
   profileSavedList: { gap: 10 },
   profileSavedCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: '#f1f5f9', backgroundColor: M3.surfaceContainerLowest },
   profileSavedThumbBtn: { flexShrink: 0 },
   profileSavedThumb: { width: 48, height: 48, borderRadius: 8, borderWidth: 1, borderColor: '#f1f5f9' },
   profileSavedInfo: { flex: 1, minWidth: 0 },
-  profileStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  profileStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981' },
-  profileStatusText: { color: '#047857', fontSize: 11, lineHeight: 15, fontWeight: '500' },
   profileSavedName: { color: M3.onSurface, fontSize: 14, lineHeight: 19, fontWeight: '600', marginTop: 1 },
   profileSavedAddress: { color: '#94a3b8', fontSize: 11, lineHeight: 15, marginTop: 1 },
   profileBookmarkBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
@@ -4862,10 +4437,10 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
-    backgroundColor: M3.primaryContainer,
+    backgroundColor: M3.secondaryContainer,
     marginBottom: 2,
   },
-  adminIdRoleText: { color: M3.onPrimary, fontSize: 11, lineHeight: 14, fontWeight: '600' },
+  adminIdRoleText: { color: M3.onSecondaryFixed, fontSize: 11, lineHeight: 14, fontWeight: '600' },
   adminIdName: { color: M3.onSurface, fontSize: 17, lineHeight: 22, fontWeight: '600', letterSpacing: -0.2 },
   adminIdOrg: { color: M3.onSurfaceVariant, fontSize: 13, lineHeight: 18 },
   adminIdLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
@@ -4900,7 +4475,7 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   adminCredValuePrimary: { color: M3.primaryContainer },
   adminCredSub: { color: M3.onSurfaceVariant, fontSize: 10, lineHeight: 13, maxWidth: '100%' },
   adminCredSubOk: { color: M3.tertiary, fontWeight: '500' },
-  adminSectionLabel: { color: M3.onSurfaceVariant, fontSize: 13, lineHeight: 16, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', paddingHorizontal: 4, marginTop: 6 },
+  adminSectionLabel: { color: M3.onSurfaceVariant, fontSize: 13, lineHeight: 16, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', paddingHorizontal: 4 },
   adminToolList: {
     borderRadius: 12,
     backgroundColor: M3.surfaceContainerLowest,
@@ -4993,173 +4568,76 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     borderRadius: 12,
   },
   adminSignOutText: { color: M3.error, fontSize: 13, lineHeight: 16, fontWeight: '600' },
-  adminFooterSign: { alignItems: 'center', gap: 2, paddingTop: 8, paddingBottom: 8 },
-  adminFooterSignMain: { color: withAlpha(M3.onSurfaceVariant, 0.8), fontSize: 11, lineHeight: 14, fontWeight: '600' },
+  adminFooterSign: { alignItems: 'center', paddingTop: 8, paddingBottom: 8 },
   adminFooterSignSub: { color: withAlpha(M3.onSurfaceVariant, 0.6), fontSize: 10, lineHeight: 13 },
-  adminAnalyticsCrumbRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  adminAnalyticsCrumbPrimary: { color: M3.primaryContainer, letterSpacing: 1.6 },
-  adminAnalyticsTitle: { color: M3.onSurface, fontSize: 20, lineHeight: 26, fontWeight: '600', letterSpacing: -0.2 },
-  adminAnalyticsRangeWrap: {
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 8,
-    padding: 4,
-    borderRadius: 12,
-    backgroundColor: M3.surfaceContainerLow,
-  },
-  adminAnalyticsRangeTab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-  },
-  adminAnalyticsRangeTabActive: {
-    backgroundColor: M3.surfaceContainerLowest,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  adminAnalyticsRangeText: { color: M3.secondary, fontSize: 13, lineHeight: 16, fontWeight: '500', letterSpacing: 0.13 },
-  adminAnalyticsRangeTextActive: { color: M3.primaryContainer, fontWeight: '500' },
-  adminAnalyticsKpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  adminAnalyticsKpi: {
-    width: '48.5%',
-    flexGrow: 1,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: M3.surfaceContainerLowest,
-    gap: 8,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  adminAnalyticsKpiHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  adminAnalyticsKpiLabel: { color: M3.secondary, fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.33, flexShrink: 1 },
-  adminAnalyticsKpiIconTinted: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: M3.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adminAnalyticsKpiIconGreen: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: M3.tertiaryFixed,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adminAnalyticsKpiIconGray: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: M3.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adminAnalyticsKpiValue: { color: M3.onSurface, fontSize: 24, lineHeight: 30, fontWeight: '700', letterSpacing: -0.36 },
-  adminAnalyticsKpiValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  adminAnalyticsKpiDenominator: { color: M3.outline, fontSize: 15, lineHeight: 20, fontWeight: '600' },
-  adminAnalyticsKpiTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  adminAnalyticsKpiTrend: { color: M3.tertiary, fontSize: 11, lineHeight: 14, fontWeight: '500', letterSpacing: 0.33 },
-  adminAnalyticsKpiNote: { color: M3.onSurfaceVariant, fontSize: 11, lineHeight: 14, letterSpacing: 0.33 },
-  adminAnalyticsPanel: {
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: M3.surfaceContainerLowest,
-    gap: 16,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  adminAnalyticsPanelHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  adminAnalyticsPanelHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
-  adminAnalyticsPanelTitle: { color: M3.onSurface, fontSize: 15, lineHeight: 20, fontWeight: '600', letterSpacing: -0.1 },
-  adminAnalyticsPanelMeta: { color: M3.secondary, fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.33 },
-  adminAnalyticsSectors: { gap: 16 },
-  adminAnalyticsSector: { gap: 6 },
-  adminAnalyticsSectorHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  adminAnalyticsSectorName: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
-  adminAnalyticsSectorTitle: { color: M3.onSurface, fontSize: 15, lineHeight: 20, fontWeight: '600', letterSpacing: -0.1, flexShrink: 1 },
-  adminAnalyticsSectorValue: { fontSize: 15, lineHeight: 20, flexShrink: 0 },
-  adminAnalyticsSectorPct: { color: M3.primaryContainer, fontWeight: '600', letterSpacing: -0.1 },
-  adminAnalyticsSectorPctLow: { color: M3.onSurface, fontWeight: '600', letterSpacing: -0.1 },
-  adminAnalyticsSectorCount: { color: M3.secondary, fontWeight: '400', fontSize: 13, lineHeight: 18 },
-  adminAnalyticsSectorTrack: {
-    height: 8,
+  adminAnalyticsScroll: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 120, gap: 20 },
+  adminAnalyticsHeader: { gap: 4 },
+  adminAnalyticsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  adminAnalyticsHeading: { color: M3.onSurface, fontSize: 24, lineHeight: 30, fontWeight: '600', letterSpacing: -0.36, flexShrink: 1 },
+  adminAnalyticsLivePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: M3.surfaceContainerLow,
-    overflow: 'hidden',
-  },
-  adminAnalyticsSectorFill: { height: '100%', borderRadius: 999 },
-  adminAnalyticsFlagPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: withAlpha(M3.errorContainer, 0.4),
+    backgroundColor: M3.surfaceContainer,
     flexShrink: 0,
   },
-  adminAnalyticsFlagText: { color: M3.onErrorContainer, fontSize: 11, lineHeight: 14, fontWeight: '500', letterSpacing: 0.33 },
-  adminAnalyticsBarriers: { gap: 8 },
-  adminAnalyticsBarrierRow: {
+  adminAnalyticsLivePillSynced: { backgroundColor: M3.tertiaryFixed },
+  adminAnalyticsLiveText: { color: M3.primaryContainer, fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.33 },
+  adminAnalyticsLiveTextSynced: { color: M3.tertiary },
+  adminAnalyticsCards: { gap: 12 },
+  adminAnalyticsCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    padding: 8,
+    gap: 12,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: M3.surfaceContainerLowest,
+    shadowColor: '#0b1c30',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  adminAnalyticsCardCopy: { flex: 1, minWidth: 0, gap: 4 },
+  adminAnalyticsCardLabel: { color: M3.onSurfaceVariant, fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.33 },
+  adminAnalyticsCardValue: { color: M3.onSurface, fontSize: 24, lineHeight: 30, fontWeight: '600', letterSpacing: -0.36 },
+  adminAnalyticsCardNote: { color: M3.onSurfaceVariant, fontSize: 13, lineHeight: 18 },
+  adminAnalyticsCardIcon: {
+    width: 36,
+    height: 36,
     borderRadius: 8,
     backgroundColor: M3.surfaceContainerLow,
-  },
-  adminAnalyticsBarrierIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: M3.surfaceContainer,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  adminAnalyticsBarrierCopy: { flex: 1, minWidth: 0, gap: 1 },
-  adminAnalyticsBarrierTitle: { color: M3.onSurface, fontSize: 15, lineHeight: 20, fontWeight: '600', letterSpacing: -0.1 },
-  adminAnalyticsBarrierNote: { color: M3.onSurfaceVariant, fontSize: 13, lineHeight: 18 },
-  adminAnalyticsBarrierCountWrap: { alignItems: 'flex-end', flexShrink: 0 },
-  adminAnalyticsBarrierCountError: { color: M3.error, fontSize: 15, lineHeight: 20, fontWeight: '700' },
-  adminAnalyticsBarrierCountPrimary: { color: M3.primaryContainer, fontSize: 15, lineHeight: 20, fontWeight: '700' },
-  adminAnalyticsBarrierSites: { color: M3.secondary, fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.33 },
-  adminAnalyticsExportBtn: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: M3.primaryContainer,
+  adminAnalyticsSummary: {
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: M3.surfaceContainerLow,
+    gap: 4,
+  },
+  adminAnalyticsSummaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(M3.outlineVariant, 0.3),
   },
-  adminAnalyticsExportText: { color: M3.onPrimary, fontSize: 14, lineHeight: 18, fontWeight: '600' },
-  adminAnalyticsExportNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
+  adminAnalyticsSummaryLabel: {
+    color: M3.onSurfaceVariant,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    letterSpacing: 0.33,
+    minWidth: 88,
+    flexShrink: 0,
   },
-  adminAnalyticsExportNoteText: { color: M3.secondary, fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.33, flex: 1 },
-  adminAnalyticsScroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120, gap: 20 },
+  adminAnalyticsSummaryValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  adminAnalyticsSummaryValue: { color: M3.onSurface, fontSize: 13, lineHeight: 18, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   adminAppBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5192,44 +4670,17 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
   adminAppBarBadgeText: { color: M3.primaryContainer, fontSize: 10, lineHeight: 13, fontWeight: '600' },
   adminAppBarSubtitle: { color: '#64748b', fontSize: 11, lineHeight: 15 },
   adminAppBarAvatar: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: withAlpha('#e2e8f0', 0.7) },
-  adminNewScroll: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, gap: 14 },
-  adminTitleBlock: { gap: 4, marginTop: 4 },
-  adminTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  adminTitleDotRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  adminTitleDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: M3.primaryContainer },
-  adminTitleEyebrow: { color: '#64748b', fontSize: 11, lineHeight: 15, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  adminTitleWard: { color: '#94a3b8', fontSize: 11, lineHeight: 15, fontWeight: '500' },
-  adminTitle: { color: '#0f172a', fontSize: 24, lineHeight: 32, fontWeight: '700', letterSpacing: -0.6 },
+  adminNewScroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 110, gap: 14 },
+  adminDirTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: 4, marginBottom: 4 },
+  adminDirTitle: { color: '#0f172a', fontSize: 20, lineHeight: 28, fontWeight: '700', letterSpacing: -0.4 },
+  adminDirCount: { color: '#94a3b8', fontSize: 12, lineHeight: 16, fontWeight: '500' },
   adminTitleBody: { color: M3.onSurfaceVariant, fontSize: 13, lineHeight: 18 },
-  adminMetricsRow: { flexDirection: 'row', gap: 10 },
-  adminMetricCard: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: withAlpha('#e2e8f0', 0.8),
-    backgroundColor: M3.surfaceContainerLowest,
-    gap: 4,
-    shadowColor: '#000000',
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  adminMetricLabel: { color: '#64748b', fontSize: 11, lineHeight: 15, fontWeight: '500' },
-  adminMetricLabelOk: { color: '#047857', fontSize: 11, lineHeight: 15, fontWeight: '500' },
-  adminMetricLabelWarn: { color: '#b45309', fontSize: 11, lineHeight: 15, fontWeight: '500' },
-  adminMetricValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  adminMetricValue: { color: '#0f172a', fontSize: 20, lineHeight: 26, fontWeight: '700' },
-  adminMetricValueOk: { color: '#059669', fontSize: 20, lineHeight: 26, fontWeight: '700' },
-  adminMetricValueWarn: { color: '#d97706', fontSize: 20, lineHeight: 26, fontWeight: '700' },
-  adminMetricUnit: { color: '#94a3b8', fontSize: 10, lineHeight: 14 },
   adminSearchBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 44,
-    paddingHorizontal: 14,
+    height: 40,
+    paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: withAlpha('#e2e8f0', 0.9),
@@ -5240,13 +4691,12 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  adminSearchInput: { flex: 1, color: M3.onSurface, fontSize: 14, paddingVertical: 0 },
+  adminSearchInput: { flex: 1, color: M3.onSurface, fontSize: 12, paddingVertical: 0 },
   adminPillsRow: { gap: 8, paddingVertical: 2 },
   adminPill: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    height: 32,
+    justifyContent: 'center',
+    height: 28,
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
@@ -5254,20 +4704,8 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     backgroundColor: M3.surfaceContainerLowest,
   },
   adminPillActive: { backgroundColor: M3.primaryContainer, borderColor: M3.primaryContainer },
-  adminPillText: { color: '#334155', fontSize: 12, lineHeight: 16, fontWeight: '500' },
+  adminPillText: { color: '#475569', fontSize: 12, lineHeight: 16, fontWeight: '500' },
   adminPillTextActive: { color: M3.onPrimary, fontWeight: '600' },
-  adminPillCount: {
-    minWidth: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
-  },
-  adminPillCountActive: { backgroundColor: withAlpha('#ffffff', 0.2) },
-  adminPillCountText: { color: '#475569', fontSize: 11, lineHeight: 14, fontWeight: '600' },
-  adminPillCountTextActive: { color: M3.onPrimary, fontWeight: '700' },
   adminFacilityCard: {
     padding: 16,
     borderRadius: 12,
@@ -5282,44 +4720,34 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     elevation: 1,
   },
   adminFacilityTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  adminFacilityMeta: { flex: 1, minWidth: 0, gap: 6 },
-  adminFacilityBadgesRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  adminFacilityCategory: { backgroundColor: '#f1f5f9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
-  adminFacilityCategoryText: { color: '#334155', fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
-  adminFacilityVerified: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  adminFacilityVerifiedText: { color: '#047857', fontSize: 11, lineHeight: 15, fontWeight: '500' },
-  adminFacilityName: { color: '#0f172a', fontSize: 16, lineHeight: 22, fontWeight: '600' },
+  adminFacilityMeta: { flex: 1, minWidth: 0, gap: 2 },
+  adminFacilityCategory: { color: '#94a3b8', fontSize: 10, lineHeight: 14, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' },
+  adminFacilityName: { color: '#0f172a', fontSize: 14, lineHeight: 20, fontWeight: '600', marginTop: 2 },
   adminFacilityActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  adminFacilityActionBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  adminFacilityAddressBlock: { gap: 2 },
-  adminFacilityAddressRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  adminFacilityAddress: { color: '#475569', fontSize: 12, lineHeight: 17, flex: 1 },
-  adminFacilityUpdated: { color: '#94a3b8', fontSize: 11, lineHeight: 15, marginLeft: 20 },
-  adminFacilityBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 2 },
+  adminFacilityActionBtn: { width: 28, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  adminFacilityAddress: { color: '#64748b', fontSize: 12, lineHeight: 17, flex: 1, marginTop: 4 },
+  adminFacilityBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
   adminBadgeOk: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
     backgroundColor: '#ecfdf5',
-    borderWidth: 1,
-    borderColor: withAlpha('#10b981', 0.25),
   },
-  adminBadgeOkText: { color: '#065f46', fontSize: 11, lineHeight: 14, fontWeight: '500' },
+  adminBadgeOkText: { color: '#065f46', fontSize: 11, lineHeight: 15, fontWeight: '500' },
   adminBadgeNo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
     backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
   },
-  adminBadgeNoText: { color: '#64748b', fontSize: 11, lineHeight: 14, fontWeight: '500' },
+  adminBadgeNoText: { color: '#64748b', fontSize: 11, lineHeight: 15, fontWeight: '500' },
   adminFacilityNoFeatures: { color: '#94a3b8', fontSize: 12, lineHeight: 16 },
   adminAddBar: { position: 'absolute', left: 16, right: 16, bottom: 16 },
   adminAddBtn: {
@@ -5327,7 +4755,7 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 48,
+    height: 44,
     borderRadius: 999,
     backgroundColor: M3.primaryContainer,
     shadowColor: '#2563eb',
@@ -5336,7 +4764,7 @@ profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  adminAddBtnText: { color: M3.onPrimary, fontSize: 14, lineHeight: 19, fontWeight: '600' },
+  adminAddBtnText: { color: M3.onPrimary, fontSize: 12, lineHeight: 16, fontWeight: '600' },
   adminFormAppBar: {
     flexDirection: 'row',
     alignItems: 'center',
