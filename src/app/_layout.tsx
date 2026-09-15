@@ -4,7 +4,7 @@ import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_7
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
-import { ActivityIndicator, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RoleProvider } from '@/contexts/role-context';
 import { FilterProvider } from '@/contexts/filter-context';
@@ -22,8 +22,25 @@ if (!clerkPublishableKey) {
 const INTER_FAMILY = 'Inter_400Regular';
 
 function useInterAsDefaultFont(loaded: boolean) {
+  // Web: react-native-web maps Text/TextInput to DOM elements, so the default
+  // typeface is applied with a plain CSS rule. Monkey-patching Text.render on
+  // web breaks under React 19 + react-native-web 0.21 (React DOM rejects the
+  // wrapped style arrays with "Failed to set an indexed property [0] on
+  // 'CSSStyleDeclaration'"). Per-instance styles still win over this rule.
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || !loaded || typeof document === 'undefined') return;
+    if (document.getElementById('inter-default-font')) return;
+    const style = document.createElement('style');
+    style.id = 'inter-default-font';
+    style.textContent =
+      'div, span, p, a, h1, h2, h3, h4, h5, h6, li, ul, ol, button, input, textarea, select, label, pre, code '
+      + `{ font-family: ${INTER_FAMILY}; }`;
+    document.head.appendChild(style);
+  }, [loaded]);
+
+  // Native: base font injected per-instance (per-instance styles win).
   const done = React.useRef(false);
-  if (loaded && !done.current) {
+  if (Platform.OS !== 'web' && loaded && !done.current) {
     done.current = true;
     for (const Component of [Text, TextInput] as any[]) {
       const originalRender = Component.render as (...args: unknown[]) => React.ReactElement<{ style?: unknown }>;
