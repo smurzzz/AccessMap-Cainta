@@ -26,10 +26,21 @@ export function ExploreScreen() {
   const filteredPlaces = places.filter((place) => matchesFilters(place, filters));
 
 return (
-    <Screen>
-      <View style={styles.exploreHeading}>
-        <Text style={styles.screenTitle}>Explore Places</Text>
-        <Text style={styles.verifiedCount}>{loading ? 'Loading' : `${filteredPlaces.length} listings`}</Text>
+    <Screen backgroundColor="#f1f6ff">
+      <View style={styles.exploreHeader}>
+        <View style={styles.exploreHeaderRing} pointerEvents="none" />
+        <View style={styles.exploreHeaderRingSmall} pointerEvents="none" />
+        <View style={styles.exploreHeaderAccent} />
+        <View style={styles.exploreHeading}>
+          <View style={styles.exploreHeadingCopy}>
+            <Text style={styles.exploreEyebrow}>DISCOVER ACCESSIBLE PLACES</Text>
+            <Text style={styles.screenTitle}>Explore Places</Text>
+          </View>
+          <View style={styles.verifiedCountPill}>
+            <Text style={styles.verifiedCount}>{loading ? 'Loading' : `${filteredPlaces.length} listings`}</Text>
+          </View>
+        </View>
+        <Text style={styles.exploreDescription}>Browse verified facilities and services around Cainta.</Text>
       </View>
       <View style={styles.exploreSearchRow}>
         <Pressable
@@ -63,9 +74,17 @@ return (
 }
 
 const styles = StyleSheet.create({
-  exploreHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
+  exploreHeader: { padding: 16, borderRadius: 16, backgroundColor: '#e8f1ff', borderWidth: 1, borderColor: '#c5dcff', shadowColor: '#0f2742', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1, gap: 8, overflow: 'hidden' },
+  exploreHeaderRing: { position: 'absolute', width: 148, height: 148, top: -76, right: -28, borderRadius: 74, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.72 },
+  exploreHeaderRingSmall: { position: 'absolute', width: 82, height: 82, top: 30, right: 20, borderRadius: 41, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.5 },
+  exploreHeaderAccent: { height: 3, width: 42, borderRadius: 999, backgroundColor: C.navy, marginBottom: 3 },
+  exploreHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  exploreHeadingCopy: { flex: 1, minWidth: 0, gap: 1 },
+  exploreEyebrow: { color: C.navy, fontSize: 10, lineHeight: 13, fontWeight: '700', letterSpacing: 1 },
   screenTitle: { color: C.ink, fontSize: T['display-md'], lineHeight: 32, fontWeight: '800' },
-  verifiedCount: { color: C.muted, fontSize: T['label-sm'] },
+  verifiedCountPill: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', flexShrink: 0 },
+  verifiedCount: { color: '#1d4ed8', fontSize: T['label-sm'], fontWeight: '700' },
+  exploreDescription: { color: C.muted, fontSize: T['body-sm'], lineHeight: 18 },
   exploreSearchRow: { flexDirection: 'row', gap: 8 },
   exploreSearch: { minHeight: 44, borderRadius: 12, backgroundColor: C.card, paddingHorizontal: 12, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderColor: '#E9ECF6' },
   exploreSearchText: { color: C.muted, fontSize: T['body-sm'] },

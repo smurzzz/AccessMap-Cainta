@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   mapNoResultsText: { color: M3.secondary, fontSize: T['body-sm'], lineHeight: 18, textAlign: 'center' },
   mapSearchBar: {
     position: 'absolute',
-    top: 16,
+    top: 30,
     left: 16,
     right: 88,
     flexDirection: 'row',
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   mapSearchInput: { flex: 1, minWidth: 0, color: M3.onSurface, fontSize: T['body-sm'], lineHeight: 18, paddingVertical: 0 },
   mapFilterRow: {
     position: 'absolute',
-    top: 60,
+    top: 74,
     left: 16,
     right: 88,
     zIndex: 14,
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   mapFilterDot: { width: 6, height: 6, borderRadius: 3 },
   mapFilterChipText: { color: M3.onSurface, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600' },
   mapFilterChipTextActive: { color: M3.onPrimary },
-  mapControls: { position: 'absolute', top: 16, right: 16, alignItems: 'center', gap: 8, zIndex: 20 },
+  mapControls: { position: 'absolute', top: 30, right: 16, alignItems: 'center', gap: 8, zIndex: 20 },
   mapZoomGroup: {
     backgroundColor: M3.surfaceContainerLowest,
     borderRadius: 12,

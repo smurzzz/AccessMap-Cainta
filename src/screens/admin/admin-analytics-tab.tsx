@@ -105,6 +105,10 @@ export function AdminAnalyticsTab() {
       <ScrollView contentContainerStyle={styles.adminAnalyticsScroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.adminAnalyticsHeader}>
+          <View style={styles.adminAnalyticsBackdropRing} pointerEvents="none" />
+          <View style={styles.adminAnalyticsBackdropRingSmall} pointerEvents="none" />
+          <View style={styles.adminAnalyticsAccent} />
+          <Text style={styles.adminAnalyticsEyebrow}>ADMIN INSIGHTS</Text>
           <View style={styles.adminAnalyticsHeaderRow}>
             <Text style={styles.adminAnalyticsHeading}>Facility Analytics</Text>
             <Pressable
@@ -201,15 +205,34 @@ export function AdminAnalyticsTab() {
 
 const styles = StyleSheet.create({
   adminTabBody: { flex: 1 },
-  adminAnalyticsScroll: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 120, gap: 20 },
-  adminAnalyticsHeader: { gap: 4 },
+  adminAnalyticsScroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120, gap: 20 },
+  adminAnalyticsHeader: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#c5dcff',
+    backgroundColor: '#e8f1ff',
+    gap: 7,
+    shadowColor: '#0f2742',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+    overflow: 'hidden',
+  },
+  adminAnalyticsBackdropRing: { position: 'absolute', width: 148, height: 148, top: -76, right: -28, borderRadius: 74, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.72 },
+  adminAnalyticsBackdropRingSmall: { position: 'absolute', width: 82, height: 82, top: 30, right: 20, borderRadius: 41, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.5 },
+  adminAnalyticsAccent: { height: 3, width: 42, borderRadius: 999, backgroundColor: M3.primaryContainer, marginBottom: 2 },
+  adminAnalyticsEyebrow: { color: M3.primaryContainer, fontSize: 10, lineHeight: 13, fontWeight: '700', letterSpacing: 1 },
   adminAnalyticsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  adminAnalyticsHeading: { color: M3.onSurface, fontSize: 24, lineHeight: 30, fontWeight: '600', letterSpacing: -0.36, flexShrink: 1 },
+  adminAnalyticsHeading: { color: '#0f172a', fontSize: 24, lineHeight: 30, fontWeight: '700', letterSpacing: -0.36, flexShrink: 1 },
   adminAnalyticsLivePill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: M3.surfaceContainer,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
     flexShrink: 0,
   },
   adminAnalyticsLivePillSynced: { backgroundColor: M3.tertiaryFixed },

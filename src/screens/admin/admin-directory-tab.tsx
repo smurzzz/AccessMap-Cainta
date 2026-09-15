@@ -4,8 +4,9 @@ import LoadingState from '@/components/ui/loading-state';
 import { CATEGORY_SHORT_LABELS } from '@/constants/catalog';
 import { M3 } from '@/constants/design-tokens';
 import { usePlaces } from '@/hooks/usePlaces';
-import { featureShortLabels , withAlpha } from '@/lib/display';
+import { featureShortLabels, photoSource, withAlpha } from '@/lib/display';
 import { Place } from '@/types';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import React, {  useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View , Alert } from 'react-native';
@@ -57,7 +58,6 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
     if (!trimmed) return true;
     return place.name.toLowerCase().includes(trimmed) || (place.address ?? '').toLowerCase().includes(trimmed);
   });
-
   const adminFilterPills: { value: PlaceCategory | 'all'; label: string }[] = [
     { value: 'all', label: 'All' },
     { value: 'hospital', label: 'Hospitals' },
@@ -69,10 +69,32 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
   return (
     <View style={styles.adminTabBody}>
       <ScrollView contentContainerStyle={styles.adminNewScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {/* Title & live count */}
-        <View style={styles.adminDirTitleRow}>
-          <Text style={styles.adminDirTitle}>Admin Directory</Text>
-          <Text style={styles.adminDirCount}>{loading ? '…' : `${places.length} listed`}</Text>
+        {/* Directory page header */}
+        <View style={styles.adminDirHeader}>
+          <View style={styles.adminDirBackdropRing} pointerEvents="none" />
+          <View style={styles.adminDirBackdropRingSmall} pointerEvents="none" />
+          <View style={styles.adminDirAccent} />
+          <View style={styles.adminDirHeaderTop}>
+            <View style={styles.adminDirHeaderCopy}>
+              <Text style={styles.adminDirEyebrow}>ADMIN DIRECTORY</Text>
+              <Text style={styles.adminDirTitle}>Directory</Text>
+            </View>
+            <View style={styles.adminDirCountPill}>
+              <Text style={styles.adminDirCount}>{loading ? '…' : `${places.length} places`}</Text>
+            </View>
+          </View>
+          <Text style={styles.adminDirDescription}>Manage and view registered places and establishments in the directory.</Text>
+          <View style={styles.adminDirStatusRow}>
+            <View style={styles.adminDirStatusDot} />
+            <Text style={styles.adminDirStatusText}>Registry synced and ready for updates</Text>
+          </View>
+          <View style={styles.adminDirStatsRow}>
+            <View style={styles.adminDirStat}>
+              <Text style={styles.adminDirStatValue}>{loading ? '—' : visiblePlaces.length}</Text>
+              <Text style={styles.adminDirStatLabel}>SHOWING NOW</Text>
+            </View>
+            <Text style={styles.adminDirStatCaption}>Filtered directory results</Text>
+          </View>
         </View>
 
         {/* Search */}
@@ -127,6 +149,12 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
             return (
               <View style={styles.adminFacilityCard} key={place.id}>
                 <View style={styles.adminFacilityTop}>
+                  <Image
+                    source={photoSource(place)}
+                    style={styles.adminFacilityPhoto}
+                    contentFit="cover"
+                    accessibilityLabel={`${place.name} sample photo`}
+                  />
                   <View style={styles.adminFacilityMeta}>
                     <Text style={styles.adminFacilityCategory}>{CATEGORY_SHORT_LABELS[place.category]}</Text>
                     <Text style={styles.adminFacilityName} numberOfLines={2}>{place.name}</Text>
@@ -197,9 +225,45 @@ export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string })
 const styles = StyleSheet.create({
   adminTabBody: { flex: 1 },
   adminNewScroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 110, gap: 14 },
-  adminDirTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: 4, marginBottom: 4 },
-  adminDirTitle: { color: '#0f172a', fontSize: 20, lineHeight: 28, fontWeight: '700', letterSpacing: -0.4 },
-  adminDirCount: { color: '#94a3b8', fontSize: 12, lineHeight: 16, fontWeight: '500' },
+  adminDirHeader: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#c5dcff',
+    backgroundColor: '#e8f1ff',
+    gap: 10,
+    shadowColor: '#0f2742',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+    overflow: 'hidden',
+  },
+  adminDirBackdropRing: { position: 'absolute', width: 148, height: 148, top: -76, right: -28, borderRadius: 74, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.72 },
+  adminDirBackdropRingSmall: { position: 'absolute', width: 82, height: 82, top: 30, right: 20, borderRadius: 41, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.5 },
+  adminDirAccent: { height: 3, width: 42, borderRadius: 999, backgroundColor: M3.primaryContainer },
+  adminDirHeaderTop: { flexDirection: 'row', alignItems: 'center' },
+  adminDirHeaderCopy: { flex: 1, minWidth: 0, gap: 1 },
+  adminDirEyebrow: { color: M3.primaryContainer, fontSize: 10, lineHeight: 13, fontWeight: '700', letterSpacing: 1 },
+  adminDirTitle: { color: '#0f172a', fontSize: 22, lineHeight: 27, fontWeight: '700', letterSpacing: -0.4 },
+  adminDirCountPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+  },
+  adminDirCount: { color: '#1d4ed8', fontSize: 11, lineHeight: 14, fontWeight: '700' },
+  adminDirDescription: { color: '#64748b', fontSize: 12, lineHeight: 17 },
+  adminDirStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 2 },
+  adminDirStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#16a34a' },
+  adminDirStatusText: { color: '#47705a', fontSize: 11, lineHeight: 14, fontWeight: '600' },
+  adminDirStatsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#dbeafe' },
+  adminDirStat: { gap: 2 },
+  adminDirStatValue: { color: '#12345b', fontSize: 18, lineHeight: 21, fontWeight: '700' },
+  adminDirStatLabel: { color: '#6b86a3', fontSize: 9, lineHeight: 12, fontWeight: '800', letterSpacing: 0.7 },
+  adminDirStatCaption: { color: '#7790aa', fontSize: 11, lineHeight: 14, fontWeight: '500' },
   adminSearchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -244,7 +308,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  adminFacilityTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  adminFacilityTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  adminFacilityPhoto: { width: 76, height: 76, borderRadius: 10, backgroundColor: M3.surfaceContainer },
   adminFacilityMeta: { flex: 1, minWidth: 0, gap: 2 },
   adminFacilityCategory: { color: '#94a3b8', fontSize: 10, lineHeight: 14, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' },
   adminFacilityName: { color: '#0f172a', fontSize: 14, lineHeight: 20, fontWeight: '600', marginTop: 2 },

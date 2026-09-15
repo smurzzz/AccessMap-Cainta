@@ -1,14 +1,13 @@
 import { AppIcon } from '@/components/ui/app-icon';
+import { M3, DesignType as T } from '@/constants/design-tokens';
 import { useRole } from '@/contexts/role-context';
 import { usePlaces } from '@/hooks/usePlaces';
-import { tabsRoute, photoSource , withAlpha , photos } from '@/lib/display';
+import { photos, photoSource, tabsRoute, withAlpha } from '@/lib/display';
 import { useSavedPlaces } from '@/lib/saved-places';
-import { M3, DesignType as T } from '@/constants/design-tokens';
 import { Place } from '@/types';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import React from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -201,7 +200,7 @@ export function ProfileScreen() {
 export type AdminTab = 'directory' | 'analytics' | 'settings';
 
 const styles = StyleSheet.create({
-  profileSafe: { flex: 1, backgroundColor: '#f8fafc' },
+  profileSafe: { flex: 1, backgroundColor: '#f1f6ff' },
   profileScrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
   profileHeroCard: {
     flexDirection: 'row',
@@ -211,7 +210,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: withAlpha('#f8fafc', 0.7),
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: '#dbe5f0',
   },
   profileAvatarWrap: { position: 'relative', width: 64, height: 64, flexShrink: 0 },
   profileAvatar: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: '#ffffff' },
@@ -230,7 +229,7 @@ const styles = StyleSheet.create({
   profileSectionTitle: { color: '#94a3b8', fontSize: 11, lineHeight: 16, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', flexShrink: 1 },
   profileViewAll: { color: M3.primaryContainer, fontSize: 12, lineHeight: 16, fontWeight: '600' },
   profileSavedList: { gap: 10 },
-  profileSavedCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: '#f1f5f9', backgroundColor: M3.surfaceContainerLowest },
+  profileSavedCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: '#dbe5f0', backgroundColor: M3.surfaceContainerLowest },
   profileSavedThumbBtn: { flexShrink: 0 },
   profileSavedThumb: { width: 48, height: 48, borderRadius: 8, borderWidth: 1, borderColor: '#f1f5f9' },
   profileSavedInfo: { flex: 1, minWidth: 0 },
@@ -238,7 +237,7 @@ const styles = StyleSheet.create({
   profileSavedAddress: { color: '#94a3b8', fontSize: 11, lineHeight: 15, marginTop: 1 },
   profileBookmarkBtn: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   profileSavedEmpty: { color: '#94a3b8', fontSize: T['body-sm'], lineHeight: 18 },
-  profileInfoList: { marginTop: 4, borderRadius: 14, borderWidth: 1, borderColor: '#f1f5f9', backgroundColor: M3.surfaceContainerLowest, overflow: 'hidden' },
+  profileInfoList: { marginTop: 4, borderRadius: 14, borderWidth: 1, borderColor: '#dbe5f0', backgroundColor: M3.surfaceContainerLowest, overflow: 'hidden' },
   profileInfoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 14, paddingVertical: 14 },
   profileInfoText: { color: '#334155', fontSize: 14, lineHeight: 20, fontWeight: '500' },
   profileInfoRowBorder: { borderTopWidth: 1, borderTopColor: '#f1f5f9' },
