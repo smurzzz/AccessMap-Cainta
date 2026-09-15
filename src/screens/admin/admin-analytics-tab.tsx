@@ -1,13 +1,13 @@
 import { AppIcon } from '@/components/ui/app-icon';
-import { usePlaces } from '@/hooks/usePlaces';
-import { supabase } from '@/lib/supabase';
-import { M3 } from '@/constants/design-tokens';
-import { withAlpha } from '@/lib/display';
-import { router } from 'expo-router';
-import React, { useEffect, useMemo, useState , useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { IconName } from '@/lib/display';
 import EmptyState from '@/components/ui/empty-state';
+import { M3 } from '@/constants/design-tokens';
+import { usePlaces } from '@/hooks/usePlaces';
+import type { IconName } from '@/lib/display';
+import { withAlpha } from '@/lib/display';
+import { supabase } from '@/lib/supabase';
+import { router } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 

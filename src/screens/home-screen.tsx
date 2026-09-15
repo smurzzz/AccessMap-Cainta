@@ -2,14 +2,14 @@ import NearbyCard from '@/components/features/nearby-card';
 import { AppIcon } from '@/components/ui/app-icon';
 import EmptyState from '@/components/ui/empty-state';
 import LoadingState from '@/components/ui/loading-state';
-import { DesignType as T, M3 } from '@/constants/design-tokens';
-import { usePlaces } from '@/hooks/usePlaces';
-import { nearbyChips, featureIcon, withAlpha, matchesFilters, availableFeatureTypes } from '@/lib/display';
-import React, {  useState } from 'react';
-import {  Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { M3, DesignType as T } from '@/constants/design-tokens';
 import { useFilters } from '@/contexts/filter-context';
+import { usePlaces } from '@/hooks/usePlaces';
+import { availableFeatureTypes, featureIcon, matchesFilters, nearbyChips, withAlpha } from '@/lib/display';
 import type { FeatureType } from '@/types';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export function HomeScreen() {
   const [activeFeature, setActiveFeature] = useState<FeatureType | null>(null);
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   homeGreetingTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   homeLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   homeLocationText: { color: M3.primary, fontSize: T['label-md'], lineHeight: 16, fontWeight: '700' },
-  homeGreetingTitle: { color: M3.onSurface, fontSize: T['headline-md'], lineHeight: 30, fontWeight: '700', letterSpacing: -0.36 },
+  homeGreetingTitle: { color: M3.onSurface, fontSize: T['headline-lg'], lineHeight: 34, fontWeight: '700', letterSpacing: -0.36 },
   homeGreetingSubtitle: { color: M3.secondary, fontSize: T['body-sm'], lineHeight: 18, marginTop: 4 },
   homeSearchWrap: { paddingHorizontal: 16, paddingTop: 8, gap: 12 },
   homeSearch: {

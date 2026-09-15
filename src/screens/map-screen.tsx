@@ -1,20 +1,20 @@
+import OSMMap, { type OSMMapHandle } from '@/components/osm-map';
 import { AppIcon } from '@/components/ui/app-icon';
 import EmptyState from '@/components/ui/empty-state';
 import LoadingState from '@/components/ui/loading-state';
-import { DesignType as T, M3 } from '@/constants/design-tokens';
+import { M3, DesignType as T } from '@/constants/design-tokens';
 import { useFilters } from '@/contexts/filter-context';
 import { usePlaces } from '@/hooks/usePlaces';
-import { tabsRoute, matchesFilters, homeCategoryLabel, withAlpha, nearbyChips, photoSource, featureShortLabels, availableFeatureTypes, haversineMeters } from '@/lib/display';
+import { availableFeatureTypes, featureShortLabels, haversineMeters, homeCategoryLabel, matchesFilters, nearbyChips, photoSource, tabsRoute, withAlpha } from '@/lib/display';
 import { SAN_ISIDRO_BOUNDS, formatDistance } from '@/lib/maps';
 import { useSavedPlaces } from '@/lib/saved-places';
-import OSMMap, { type OSMMapHandle } from '@/components/osm-map';
-import * as Location from 'expo-location';
+import type { FeatureType, Place } from '@/types';
 import { Image } from 'expo-image';
-import { router , useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, {  useRef, useState } from 'react';
+import * as Location from 'expo-location';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import type { Place , FeatureType } from '@/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function MapScreen() {
   const params = useLocalSearchParams<{ place?: string }>();

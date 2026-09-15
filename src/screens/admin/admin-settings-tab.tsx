@@ -118,19 +118,20 @@ export function AdminSettingsTab() {
       <ScrollView contentContainerStyle={styles.adminNewScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Section 1: Admin identity card */}
         <View style={styles.adminIdCard}>
-          <View style={styles.adminIdCardGlow} pointerEvents="none" />
+          <View style={styles.adminIdCardRing} pointerEvents="none" />
+          <View style={styles.adminIdCardRingSmall} pointerEvents="none" />
           <View style={styles.adminIdCardRow}>
             <View style={styles.adminIdAvatarWrap}>
               <Image source={user?.imageUrl ? { uri: user.imageUrl } : photos.avatar} style={styles.adminIdAvatar} contentFit="cover" />
             </View>
             <View style={styles.adminIdCopy}>
               <View style={styles.adminIdRolePill}>
-                <Text style={styles.adminIdRoleText}>{syncing ? 'Checking role…' : isAdmin ? 'Municipal Administrator' : 'Community Member'}</Text>
+                <Text style={styles.adminIdRoleText}>{syncing ? 'Checking role…' : isAdmin ? 'Administrator' : 'Community Member'}</Text>
               </View>
               <Text style={styles.adminIdName} numberOfLines={1}>{userName}</Text>
               <View style={styles.adminIdLocRow}>
                 <AppIcon name="map-marker-radius" size={14} color={M3.onSecondaryContainer} />
-                <Text style={styles.adminIdLocText} numberOfLines={1}>Municipal Hall, Cainta</Text>
+                <Text style={styles.adminIdLocText} numberOfLines={1}>Cainta, Rizal</Text>
               </View>
             </View>
           </View>
@@ -287,6 +288,8 @@ const styles = StyleSheet.create({
   adminIdCard: {
     padding: 16,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#c5dcff',
     backgroundColor: M3.surfaceContainerLowest,
     gap: 12,
     overflow: 'hidden',
@@ -296,15 +299,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  adminIdCardGlow: {
-    position: 'absolute',
-    top: -48,
-    right: -48,
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    backgroundColor: withAlpha(M3.primaryFixedDim, 0.2),
-  },
+  adminIdCardRing: { position: 'absolute', width: 148, height: 148, top: -76, right: -28, borderRadius: 74, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.72 },
+  adminIdCardRingSmall: { position: 'absolute', width: 82, height: 82, top: 30, right: 20, borderRadius: 41, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.5 },
   adminIdCardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
   adminIdAvatarWrap: { width: 64, height: 64, flexShrink: 0 },
   adminIdAvatar: { width: 64, height: 64, borderRadius: 12, backgroundColor: M3.surfaceContainerLow },
@@ -314,10 +310,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
-    backgroundColor: M3.secondaryContainer,
+    backgroundColor: '#dcfce7',
     marginBottom: 2,
   },
-  adminIdRoleText: { color: M3.onSecondaryFixed, fontSize: 11, lineHeight: 14, fontWeight: '600' },
+  adminIdRoleText: { color: '#166534', fontSize: 11, lineHeight: 14, fontWeight: '700' },
   adminIdName: { color: M3.onSurface, fontSize: 17, lineHeight: 22, fontWeight: '600', letterSpacing: -0.2 },
   adminIdLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   adminIdLocText: { color: M3.onSurfaceVariant, fontSize: 11, lineHeight: 14, fontWeight: '600' },

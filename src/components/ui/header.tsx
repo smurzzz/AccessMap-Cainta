@@ -13,7 +13,7 @@ function Header({ title = 'Home', back }: { title?: string; back?: boolean }) {
           <Text style={styles.backIcon}>‹</Text>
         </Pressable>
       ) : (
-        <Image source={require('@/assets/images/accessmap_pin_logo.png')} style={styles.logo} />
+        <Image source={require('@/assets/images/final_logo.png')} style={styles.logo} contentFit="contain" />
       )}
       <Text style={styles.headerTitle}>{title}</Text>
       <View style={styles.flex} />

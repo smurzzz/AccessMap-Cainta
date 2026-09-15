@@ -69,6 +69,8 @@ export function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.profileScrollContent} showsVerticalScrollIndicator={false}>
         {/* Profile header / user card */}
         <View style={styles.profileHeroCard}>
+          <View style={styles.profileHeroRing} pointerEvents="none" />
+          <View style={styles.profileHeroRingSmall} pointerEvents="none" />
           <View style={styles.profileAvatarWrap}>
             <Image source={avatar} style={styles.profileAvatar} contentFit="cover" />
             <View style={styles.profileOnlineDot} />
@@ -208,10 +210,13 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 14,
     borderRadius: 18,
-    backgroundColor: withAlpha('#f8fafc', 0.7),
+    backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#dbe5f0',
+    overflow: 'hidden',
   },
+  profileHeroRing: { position: 'absolute', width: 148, height: 148, top: -76, right: -28, borderRadius: 74, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.72 },
+  profileHeroRingSmall: { position: 'absolute', width: 82, height: 82, top: 30, right: 20, borderRadius: 41, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.5 },
   profileAvatarWrap: { position: 'relative', width: 64, height: 64, flexShrink: 0 },
   profileAvatar: { width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: '#ffffff' },
   profileOnlineDot: { position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#10b981', borderWidth: 2, borderColor: '#ffffff' },

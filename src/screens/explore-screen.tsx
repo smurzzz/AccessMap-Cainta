@@ -1,16 +1,16 @@
 import PlaceCard from '@/components/features/place-card';
+import { AppIcon } from '@/components/ui/app-icon';
 import EmptyState from '@/components/ui/empty-state';
 import LoadingState from '@/components/ui/loading-state';
 import Screen from '@/components/ui/screen';
-import { usePlaces } from '@/hooks/usePlaces';
 import { DesignColors as C, DesignType as T } from '@/constants/design-tokens';
 import { useFilters } from '@/contexts/filter-context';
+import { usePlaces } from '@/hooks/usePlaces';
 import { matchesFilters, tabsRoute } from '@/lib/display';
-import { router } from 'expo-router';
-import React, {  useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { AppIcon } from '@/components/ui/app-icon';
 import type { PlaceCategory } from '@/types';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export function ExploreScreen() {
   const [activeCategory, setActiveCategory] = useState<PlaceCategory | null>(null);
@@ -79,9 +79,9 @@ const styles = StyleSheet.create({
   exploreHeaderRingSmall: { position: 'absolute', width: 82, height: 82, top: 30, right: 20, borderRadius: 41, borderWidth: 2, borderColor: '#c5dcff', opacity: 0.5 },
   exploreHeaderAccent: { height: 3, width: 42, borderRadius: 999, backgroundColor: C.navy, marginBottom: 3 },
   exploreHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  exploreHeadingCopy: { flex: 1, minWidth: 0, gap: 1 },
+  exploreHeadingCopy: { flex: 1, minWidth: 0, gap: 6 },
   exploreEyebrow: { color: C.navy, fontSize: 10, lineHeight: 13, fontWeight: '700', letterSpacing: 1 },
-  screenTitle: { color: C.ink, fontSize: T['display-md'], lineHeight: 32, fontWeight: '800' },
+  screenTitle: { color: C.ink, fontSize: T['headline-lg'], lineHeight: 34, fontWeight: '700', letterSpacing: -0.36 },
   verifiedCountPill: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', flexShrink: 0 },
   verifiedCount: { color: '#1d4ed8', fontSize: T['label-sm'], fontWeight: '700' },
   exploreDescription: { color: C.muted, fontSize: T['body-sm'], lineHeight: 18 },

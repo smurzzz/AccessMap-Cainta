@@ -6,6 +6,7 @@ import * as Linking from 'expo-linking';
 import React, { useState } from 'react';
 import { Pressable, Text, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 
 export function LoginScreen() {
   const { startSSOFlow } = useSSO();
@@ -42,9 +43,8 @@ export function LoginScreen() {
 
         <View style={styles.loginHero}>
           <View style={styles.logoWrapper}>
-            <View style={styles.logoGlow} />
             <View style={styles.logoBox}>
-              <AppIcon name="map-marker" size={40} color={M3.onPrimary} />
+              <Image source={require('@/assets/images/final_logo.png')} style={styles.loginLogoImage} contentFit="contain" />
             </View>
           </View>
           <Text style={styles.appTitle}>AccessMap</Text>
@@ -55,22 +55,24 @@ export function LoginScreen() {
         </View>
 
         <View style={styles.loginFooter}>
-          <Pressable
-            onPress={onSignIn}
-            disabled={signingIn}
-            accessibilityRole="button"
-            accessibilityLabel="Continue with Google"
-            style={styles.googleButton}
-            android_ripple={{ color: 'rgba(11,28,48,0.08)', foreground: true }}
-          >
-            <GoogleLogo />
-            <Text style={styles.googleButtonText}>{signingIn ? 'Signing in…' : 'Continue with Google'}</Text>
-          </Pressable>
-          {signInError ? <Text style={styles.errorText}>{signInError}</Text> : null}
-          <Text style={styles.termsText}>
-            By continuing you agree to our <Text style={styles.termsLink}>Terms</Text> and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>.
-          </Text>
+          <View style={styles.loginActionGroup}>
+            <Pressable
+              onPress={onSignIn}
+              disabled={signingIn}
+              accessibilityRole="button"
+              accessibilityLabel="Continue with Google"
+              style={styles.googleButton}
+              android_ripple={{ color: 'rgba(11,28,48,0.08)', foreground: true }}
+            >
+              <GoogleLogo />
+              <Text style={styles.googleButtonText}>{signingIn ? 'Signing in…' : 'Continue with Google'}</Text>
+            </Pressable>
+            {signInError ? <Text style={styles.errorText}>{signInError}</Text> : null}
+            <Text style={styles.termsText}>
+              By continuing you agree to our <Text style={styles.termsLink}>Terms</Text> and{' '}
+              <Text style={styles.termsLink}>Privacy Policy</Text>.
+            </Text>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -78,7 +80,7 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  loginSafe: { flex: 1, backgroundColor: M3.surface },
+  loginSafe: { flex: 1, backgroundColor: '#f1f6ff' },
   loginFrame: { flex: 1, width: '100%', maxWidth: 384, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 24, justifyContent: 'space-between', alignItems: 'center' },
   loginTopRow: { width: '100%', flexDirection: 'row', justifyContent: 'flex-end' },
   livePill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: M3.surfaceContainerLow },
@@ -86,13 +88,14 @@ const styles = StyleSheet.create({
   liveText: { color: M3.secondary, fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.55, textTransform: 'uppercase' },
   loginHero: { alignItems: 'center', gap: 4 },
   logoWrapper: { position: 'relative', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
-  logoGlow: { position: 'absolute', top: -6, right: -6, bottom: -6, left: -6, backgroundColor: M3.primaryFixed, borderRadius: 16, opacity: 0.4 },
-  logoBox: { width: 80, height: 80, borderRadius: 16, backgroundColor: M3.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+  logoBox: { width: 88, height: 88, borderRadius: 44, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', shadowColor: '#2563eb', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.24, shadowRadius: 12, elevation: 6 },
+  loginLogoImage: { width: '100%', height: '100%', borderRadius: 44 },
   appTitle: { color: M3.onSurface, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.6, textAlign: 'center', marginBottom: 4 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   locationText: { color: M3.onSurfaceVariant, fontSize: 14, lineHeight: 20 },
-  loginFooter: { width: '100%', alignItems: 'center', gap: 16 },
-  googleButton: { width: '100%', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: M3.surfaceContainerLowest, borderRadius: 12, borderWidth: 1, borderColor: M3.loginBorder, overflow: 'hidden', shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 2, elevation: 1 },
+  loginFooter: { width: '100%', alignItems: 'center' },
+  loginActionGroup: { width: '100%', alignItems: 'center', gap: 16, transform: [{ translateY: -48 }] },
+  googleButton: { width: '100%', height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: M3.surfaceContainerLowest, borderRadius: 999, borderWidth: 1, borderColor: M3.loginBorder, overflow: 'hidden', shadowColor: '#000000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 2, elevation: 1 },
   googleButtonText: { color: M3.onSurface, fontSize: 15, lineHeight: 20, fontWeight: '600' },
   errorText: { color: C.amber, fontSize: T['body-md'], textAlign: 'center', fontWeight: '700', marginVertical: 10 },
   termsText: { color: M3.outline, fontSize: 13, lineHeight: 18, letterSpacing: 0.065, textAlign: 'center', maxWidth: 320, paddingHorizontal: 8 },

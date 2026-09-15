@@ -3,6 +3,7 @@ import { withAlpha } from '@/lib/display';
 import { router } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Svg, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { DesignType as T } from '@/constants/design-tokens';
@@ -29,9 +30,9 @@ export function SplashScreen() {
           <Svg width="100%" height="100%" style={styles.splashGradient}>
             <Defs>
               <LinearGradient id="splashGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#1e40ff" />
-                <Stop offset="0.55" stopColor="#1a38e8" />
-                <Stop offset="1" stopColor="#12246b" />
+                <Stop offset="0" stopColor="#3b82f6" />
+                <Stop offset="0.55" stopColor="#3578dc" />
+                <Stop offset="1" stopColor="#1e3a8a" />
               </LinearGradient>
             </Defs>
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#splashGrad)" />
@@ -53,9 +54,8 @@ export function SplashScreen() {
 
             <View style={styles.splashCenter}>
               <View style={styles.splashPinWrap}>
-                <View style={styles.splashPinGlow} />
                 <View style={styles.splashPinBox}>
-                  <AppIcon name="map-marker" size={42} color="#ffffff" />
+                  <Image source={require('@/assets/images/final_logo.png')} style={styles.splashLogoImage} contentFit="contain" />
                 </View>
               </View>
               <Text style={styles.splashTitle}>AccessMap</Text>
@@ -88,8 +88,8 @@ const styles = StyleSheet.create({
   splashStage: { flex: 1 },
   splashSizing: { flex: 1 },
   splashGradient: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
-  splashGlowTop: { position: 'absolute', top: -96, right: -96, width: 288, height: 288, borderRadius: 144, backgroundColor: withAlpha('#ffffff', 0.05) },
-  splashGlowBottom: { position: 'absolute', bottom: -80, left: -80, width: 256, height: 256, borderRadius: 128, backgroundColor: withAlpha('#dfe0ff', 0.1) },
+  splashGlowTop: { position: 'absolute', top: -96, right: -96, width: 288, height: 288, borderRadius: 144, backgroundColor: withAlpha('#ffffff', 0.035) },
+  splashGlowBottom: { position: 'absolute', bottom: -80, left: -80, width: 256, height: 256, borderRadius: 128, backgroundColor: withAlpha('#dfe0ff', 0.07) },
   splashBody: { width: '100%', paddingHorizontal: 16, paddingVertical: 28, alignItems: 'center', justifyContent: 'space-between' },
   splashTopRow: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: 0.8 },
   splashLivePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha('#ffffff', 0.1), borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 },
@@ -98,24 +98,20 @@ const styles = StyleSheet.create({
   splashTopIcons: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   splashCenter: { width: '100%', alignItems: 'center', justifyContent: 'center', marginVertical: 'auto' },
   splashPinWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  splashPinGlow: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    bottom: -8,
-    left: -8,
-    backgroundColor: withAlpha('#ffffff', 0.2),
-    borderRadius: 16,
-    opacity: 0.6,
-  },
   splashPinBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
-    backgroundColor: withAlpha('#ffffff', 0.15),
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#38bdf8',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.42,
+    shadowRadius: 16,
+    elevation: 7,
   },
+  splashLogoImage: { width: '100%', height: '100%', borderRadius: 44, transform: [{ scale: 1.12 }] },
   splashTitle: { color: '#ffffff', fontSize: T['headline-lg'], lineHeight: 36, fontWeight: '700', letterSpacing: -0.6, marginBottom: 4, textAlign: 'center' },
   splashSubtitle: { color: '#d2d5ff', fontSize: T['body-md'], lineHeight: 20, textAlign: 'center', maxWidth: 260 },
   splashTrustPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: withAlpha('#ffffff', 0.1), borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8, marginTop: 20 },

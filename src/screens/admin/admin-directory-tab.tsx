@@ -3,15 +3,15 @@ import EmptyState from '@/components/ui/empty-state';
 import LoadingState from '@/components/ui/loading-state';
 import { CATEGORY_SHORT_LABELS } from '@/constants/catalog';
 import { M3 } from '@/constants/design-tokens';
+import { useAuthedSupabase } from '@/hooks/useAuthedSupabase';
 import { usePlaces } from '@/hooks/usePlaces';
 import { featureShortLabels, photoSource, withAlpha } from '@/lib/display';
+import type { PlaceCategory } from '@/types';
 import { Place } from '@/types';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import React, {  useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View , Alert } from 'react-native';
-import { useAuthedSupabase } from '@/hooks/useAuthedSupabase';
-import type { PlaceCategory } from '@/types';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export function AdminDirectoryTab({ drillCategory }: { drillCategory?: string }) {
   const authed = useAuthedSupabase();
