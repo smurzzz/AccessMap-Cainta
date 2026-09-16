@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export function HomeScreen() {
   const [activeFeature, setActiveFeature] = useState<FeatureType | null>(null);
   const [query, setQuery] = useState('');
-  const { places, loading, error } = usePlaces();
+  const { places, loading, error, reload } = usePlaces();
   const { filters } = useFilters();
   const trimmed = query.trim().toLowerCase();
   const visible = places.filter((place) => {
@@ -85,7 +85,19 @@ export function HomeScreen() {
             <Text style={styles.homeNearbyTitle}>Nearby Places</Text>
             <Text style={styles.homeNearbyCount}>{loading ? '…' : `${visible.length} locations`}</Text>
           </View>
-          {error ? <EmptyState title="Could not load facilities" message={error} /> : null}
+          {error ? (
+            <View>
+              <EmptyState title="Could not load facilities" message={error} />
+              <Pressable
+                style={styles.homeRetryBtn}
+                onPress={reload}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading facilities"
+              >
+                <Text style={styles.homeRetryText}>↻  Try Again</Text>
+              </Pressable>
+            </View>
+          ) : null}
           {!error && loading ? <LoadingState label="Loading facilities…" /> : null}
           {!error && !loading && visible.length === 0 ? <EmptyState message="No facilities match your filters." /> : null}
           {!error && !loading ? (
@@ -146,4 +158,6 @@ const styles = StyleSheet.create({
   homeNearbyTitle: { color: M3.onSurface, fontSize: T['title-md'], lineHeight: 22, fontWeight: '600', letterSpacing: -0.085 },
   homeNearbyCount: { color: M3.secondary, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600', letterSpacing: 0.33 },
   homeNearbyList: { gap: 12 },
+  homeRetryBtn: { alignSelf: 'center', marginTop: 4, marginBottom: 16, backgroundColor: M3.primaryContainer, paddingHorizontal: 20, minHeight: 48, justifyContent: 'center', borderRadius: 10 },
+  homeRetryText: { color: M3.onPrimary, fontSize: T['link-md'], lineHeight: 18, fontWeight: '600' },
 });

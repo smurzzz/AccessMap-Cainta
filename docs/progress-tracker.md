@@ -2,7 +2,7 @@
 
 Living checklist. Update as you go — check items off, add dates, note blockers. Mirrors `phase-plan.md`.
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-16
 
 ## Legend
 - [ ] Not started
@@ -43,6 +43,7 @@ Living checklist. Update as you go — check items off, add dates, note blockers
 - [x] Category browse connected
 - [x] Filter connected
 - [x] Place Details connected
+- [x] Loading/error/empty states on every data-fetching screen, incl. retry paths (Phase 10 — see `docs/testing-report.md`)
 
 ## Phase 2B — Auth + Maps + Admin CRUD
 - [x] Clerk Expo SDK integrated (`@clerk/clerk-expo` v2.20.0, Core 2)
@@ -64,13 +65,13 @@ Living checklist. Update as you go — check items off, add dates, note blockers
 - [ ] RLS verified: non-admin cannot write (tested — requires Clerk native Supabase integration enabled + admin clerk_user_id updated)
 
 ## Phase 3 — Testing & QA
-- [ ] Functional test: General User flow, iOS
-- [ ] Functional test: General User flow, Android
-- [ ] Functional test: Admin flow, iOS
-- [ ] Functional test: Admin flow, Android
+- [ ] Functional test: General User flow, iOS (needs device/simulator — checklist in `docs/testing-report.md`)
+- [ ] Functional test: General User flow, Android (needs device/simulator — checklist in `docs/testing-report.md`)
+- [ ] Functional test: Admin flow, iOS (needs device/simulator + admin Clerk account)
+- [ ] Functional test: Admin flow, Android (needs device/simulator + admin Clerk account)
 - [x] Accessibility self-audit (contrast, touch targets, labels, font scaling) — Phase 9 audit pass complete (labels, roles, 48px targets, icons paired with all status colors)
 - [x] Scope-compliance check passed (no scoring/reports/emergency/live-nav/LGU claims anywhere) — Phase 9 audit removed all offending copy and logic
-- [ ] Known bugs list emptied or triaged
+- [~] Known bugs list emptied or triaged — Phase 10 audit fixed all states bugs found; remaining items are device/OAuth testability blockers, see `docs/testing-report.md`
 
 ## Phase 4 — Deployment
 - [ ] Supabase environment finalized for demo
