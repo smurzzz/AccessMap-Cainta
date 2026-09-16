@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import type { Place, PlaceCategory } from '@/types';
@@ -18,6 +19,21 @@ export function usePlaces(category?: PlaceCategory): UsePlacesResult {
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
+  // Refetch when the screen regains focus so content added elsewhere (e.g. the
+  // admin Add-Place form) is visible the moment the user navigates back — no
+  // manual pull-to-refresh needed. The first focus coincides with the mount
+  // fetch below, so it is skipped. Refetches are silent: once data has been
+  // shown, later fetches keep the list on screen (no loading flash, no error
+  // clobber) and just swap in fresher rows when they arrive.
+  const hasData = useRef(false);
+  const mounted = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (mounted.current) reload();
+      else mounted.current = true;
+    }, [reload]),
+  );
+
   useEffect(() => {
     let cancelled = false;
 
@@ -28,7 +44,7 @@ export function usePlaces(category?: PlaceCategory): UsePlacesResult {
         return;
       }
 
-      setLoading(true);
+      if (!hasData.current) setLoading(true);
       setError(null);
 
       let query = supabase
@@ -45,11 +61,12 @@ export function usePlaces(category?: PlaceCategory): UsePlacesResult {
       if (cancelled) return;
 
       if (queryError) {
-        setError(queryError.message);
+        if (!hasData.current) setError(queryError.message);
       } else {
         setPlaces((data as Place[] | null) ?? []);
+        hasData.current = true;
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     load();

@@ -2,7 +2,7 @@
 
 Living checklist. Update as you go — check items off, add dates, note blockers. Mirrors `phase-plan.md`.
 
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-16 (Phase 11 — deployment prep)
 
 ## Legend
 - [ ] Not started
@@ -74,10 +74,10 @@ Living checklist. Update as you go — check items off, add dates, note blockers
 - [~] Known bugs list emptied or triaged — Phase 10 audit fixed all states bugs found; remaining items are device/OAuth testability blockers, see `docs/testing-report.md`
 
 ## Phase 4 — Deployment
-- [ ] Supabase environment finalized for demo
-- [ ] EAS Build produced (or Expo Go demo path confirmed)
-- [ ] Final seed data set for demo
-- [ ] README + doc set finalized
+- [~] Supabase environment finalized for demo — seed data demo-shaped; hospital photo_url update ready in `supabase/seed.sql` (user runs it in the SQL editor)
+- [~] EAS Build produced (or Expo Go demo path confirmed) — EAS project `@henry26/accessMap` created, `eas.json` preview profile (Android APK), env keys synced. Builds 1–2 failed at Install dependencies: (a) out-of-sync `package-lock.json` — fixed via `npm install`; (b) Windows-only `lightningcss-win32-x64-msvc` hardcoded in devDependencies — moved to `optionalDependencies` so Linux runners skip it (verified via `npm ci --dry-run --os=linux`). Build 3 `c1ac5bb1` submitted — dashboard: expo.dev/accounts/henry26/projects/accessMap/builds; install + on-device OAuth verification pending build completion
+- [x] Final seed data set for demo — 5-beat story scripted in `docs/demo-guide.md`; demo-reliability fix added (screens refetch on focus)
+- [x] README + doc set finalized — real project README replaced the create-expo-app template; `docs/demo-guide.md` added
 
 ## Phase 5 — Presentation
 - [ ] Demo script rehearsed
@@ -97,6 +97,10 @@ _(Record any scope or tech decisions made mid-project so future-you remembers wh
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-09-17 | Build 3 failed at bundling: `useFocusEffect` was imported from `@react-navigation/native`, which SDK 57 Expo Router forbids — moved the import to `expo-router` (same API). Also folded static `app.json` into `app.config.js` (single source of truth) and ran `expo install --fix` (17 SDK-57 patch bumps) to pass `expo doctor` 21/21. Config now lives only in `app.config.js`. | EAS runs `expo-doctor` + an eager Android bundle as build steps; both must pass locally before submitting a build |
+| 2026-09-16 | Phase 11 demo path: EAS **preview APK** (installable, shareable) as primary run mode; Expo Go documented as fallback | APK works standalone on stage (no laptop/dev server); EAS free tier limits only queue time, not distribution — `distribution: internal` + `buildType: apk` |
+| 2026-09-16 | `usePlaces` now refetches on screen focus (silent, no loading flash once data exists) | Demo beat "admin adds a place → it appears for the user" previously needed pull-to-refresh; focus refetch makes the live story work |
+| 2026-09-16 | ORS key left unconfigured — directions run on free keyless OSRM fallback (ORS attempt first when a key is later added) | ORS requires an account/key; the fallback keeps the directions demo working with zero setup |
 | | Switched platform from Web to Mobile App | Client/professor request |
 | | Chose static step-by-step directions over live Waze-style navigation | Timeline + scope fit |
 | | Switched auth to Google-only via Clerk | Simplicity, security, client request ("direct sa Google") |
