@@ -9,7 +9,13 @@ export type OSMMapHandle = {
   zoomIn: () => void;
   zoomOut: () => void;
   recenter: () => void;
+  /** Fly to a pin and mark it active (Google-Maps-style selection). `offsetY` shifts the camera so the pin sits above bottom UI. */
+  focusPin: (id: string, offsetY?: number) => void;
 };
+
+type MapCommand = 'zoomIn' | 'zoomOut' | 'recenter' | 'focusPin';
+
+type QueuedCommand = { command: MapCommand; args: (string | number)[] };
 
 type Props = {
   pins?: OSM_Pin[];
@@ -18,6 +24,8 @@ type Props = {
   bounds?: OSM_Bounds;
   activePinId?: string | null;
   userLocation?: OSM_Point | null;
+  /** Vertical camera offset (px) so the focused pin sits above bottom UI, Google-Maps-style. */
+  focusOffsetY?: number;
   height?: number;
   onPinPress?: (id: string) => void;
 };
@@ -32,13 +40,15 @@ type MapUpdate = {
 };
 
 const OSMMap = forwardRef<OSMMapHandle, Props>(function OSMMap(
-  { pins = [], line, focus, bounds, activePinId, userLocation, height = 320, onPinPress },
+  { pins = [], line, focus, bounds, activePinId, userLocation, focusOffsetY, height = 320, onPinPress },
   ref,
 ) {
   const webviewRef = useRef<WebView>(null);
   const readyRef = useRef(false);
   const pendingRef = useRef<string | null>(null);
   const lastSentRef = useRef<string>('');
+  // Commands fired before the embedded page announces itself are replayed on ready.
+  const commandQueueRef = useRef<QueuedCommand[]>([]);
 
   // The HTML is built once per mount; everything after goes through the bridge — no reloads.
   const html = useMemo(
@@ -50,6 +60,7 @@ const OSMMap = forwardRef<OSMMapHandle, Props>(function OSMMap(
         bounds: bounds ?? null,
         activePinId: activePinId ?? null,
         userLocation: userLocation ?? null,
+        focusOffsetY: focusOffsetY ?? null,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -60,15 +71,22 @@ const OSMMap = forwardRef<OSMMapHandle, Props>(function OSMMap(
     webviewRef.current?.injectJavaScript(script);
   }, []);
 
-  const injectCommand = useCallback((command: 'zoomIn' | 'zoomOut' | 'recenter') => {
-    if (!readyRef.current) return;
-    webviewRef.current?.injectJavaScript(`window.__mapBridge.${command}(); true;`);
+  const injectCommand = useCallback((command: MapCommand, args: (string | number)[] = []) => {
+    if (!readyRef.current) {
+      commandQueueRef.current.push({ command, args });
+      return;
+    }
+    // JSON.stringify([...]).slice(1, -1) yields safe literals: `"pin-1"` for strings, `1` for numbers.
+    const argsSuffix = args.length > 0 ? JSON.stringify(args).slice(1, -1) : '';
+    webviewRef.current?.injectJavaScript(`window.__mapBridge.${command}(${argsSuffix}); true;`);
   }, []);
 
   useImperativeHandle(ref, () => ({
     zoomIn: () => injectCommand('zoomIn'),
     zoomOut: () => injectCommand('zoomOut'),
     recenter: () => injectCommand('recenter'),
+    focusPin: (id: string, offsetY?: number) =>
+      injectCommand('focusPin', offsetY != null ? [id, offsetY] : [id]),
   }), [injectCommand]);
 
   // Diff current props against what the map already has; push changes over the bridge.
@@ -106,12 +124,15 @@ const OSMMap = forwardRef<OSMMapHandle, Props>(function OSMMap(
               // ignore malformed pending payload
             }
           }
+          const queued = commandQueueRef.current;
+          commandQueueRef.current = [];
+          for (const { command, args } of queued) injectCommand(command, args);
         }
       } catch {
         // ignore malformed messages from the embedded page
       }
     },
-    [onPinPress, injectUpdate],
+    [onPinPress, injectUpdate, injectCommand],
   );
 
   return (

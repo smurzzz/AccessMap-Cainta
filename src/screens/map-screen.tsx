@@ -71,6 +71,8 @@ export function MapScreen() {
     null;
   const activePlaceId = activePlace?.id ?? null;
   const mapHeight = Math.max(240, height - insets.top - insets.bottom - 68);
+  // Camera offset (px): shifts the map center DOWN so the focused pin sits above the bottom card.
+  const pinFocusOffsetY = Math.round(mapHeight / 4.5);
 
   const recenterOnUser = () => {
     (async () => {
@@ -87,11 +89,20 @@ export function MapScreen() {
     })();
   };
 
+  // Pin taps arrive as raw ids over the bridge; resolve and focus them like a search pick.
+  const selectPlaceById = (id: string) => {
+    const place = visiblePlaces.find((item) => item.id === id);
+    if (!place) return;
+    selectPlace(place);
+  };
+
   const selectPlace = (place: Place) => {
     setSelectedPlaceId(place.id);
     setQuery(place.name);
     setShowSuggestions(false);
     searchInputRef.current?.blur();
+    // Google-Maps-style: always drop the camera onto the pin, even if it was already selected.
+    mapRef.current?.focusPin(place.id, pinFocusOffsetY);
   };
 
   const submitSearch = () => {
@@ -116,8 +127,9 @@ export function MapScreen() {
             bounds={SAN_ISIDRO_BOUNDS}
             activePinId={activePlaceId}
             userLocation={userLocation}
+            focusOffsetY={pinFocusOffsetY}
             height={mapHeight}
-            onPinPress={(id) => setSelectedPlaceId(id)}
+            onPinPress={(id) => selectPlaceById(id)}
           />
         ) : null}
 
