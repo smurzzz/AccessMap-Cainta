@@ -265,3 +265,16 @@ union all
 select 'accessibility_features', count(*)::int from public.accessibility_features
 union all
 select 'users', count(*)::int from public.users;
+
+-- -------------------------------------------------------------
+-- Phase 11 — Demo polish: hero photos for the two hospitals
+-- featured in the presentation walkthrough. Public images so
+-- Place Details shows a real photo on screen. Idempotent.
+-- -------------------------------------------------------------
+update public.places
+set photo_url = 'https://images.unsplash.com/photo-1586773860418-d37222d8fce3?auto=format&fit=crop&w=1200&q=70'
+where id = '00000000-0000-4000-8000-000000000001';
+
+update public.places
+set photo_url = 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1200&q=70'
+where id = '00000000-0000-4000-8000-000000000002';

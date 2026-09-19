@@ -5,7 +5,11 @@ import LoadingState from '@/components/ui/loading-state';
 import { M3, DesignType as T } from '@/constants/design-tokens';
 import { useFilters } from '@/contexts/filter-context';
 import { usePlaces } from '@/hooks/usePlaces';
+<<<<<<< HEAD
 import { availableFeatureTypes, featureIcon, featureShortLabels, haversineMeters, homeCategoryLabel, matchesFilters, nearbyChips, photoSource, tabsRoute, withAlpha } from '@/lib/display';
+=======
+import { availableFeatureTypes, categoryIcon, featureShortLabels, haversineMeters, homeCategoryLabel, matchesFilters, nearbyChips, photoSource, tabsRoute, withAlpha } from '@/lib/display';
+>>>>>>> 2f219fd7914d149e7e7b43591175db91438af942
 import { SAN_ISIDRO_BOUNDS, formatDistance } from '@/lib/maps';
 import { useSavedPlaces } from '@/lib/saved-places';
 import type { FeatureType, Place } from '@/types';
@@ -17,16 +21,25 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDime
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function MapScreen() {
-  const params = useLocalSearchParams<{ place?: string }>();
+  const params = useLocalSearchParams<{ place?: string | string[] }>();
   const { places, loading, error } = usePlaces();
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [tappedPlaceId, setTappedPlaceId] = useState<string | null>(params.place ?? null);
+  const routePlaceId = Array.isArray(params.place) ? params.place[0] : params.place;
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(routePlaceId ?? null);
+  const lastRoutePlaceIdRef = useRef<string | null>(routePlaceId ?? null);
+  // "Open in map" from another screen always retargets the selection.
+  if ((routePlaceId ?? null) !== lastRoutePlaceIdRef.current) {
+    lastRoutePlaceIdRef.current = routePlaceId ?? null;
+    setSelectedPlaceId(routePlaceId ?? null);
+  }
   const { savedIds, toggleSaved } = useSavedPlaces();
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FeatureType | null>(null);
   const mapRef = useRef<OSMMapHandle>(null);
+  const searchInputRef = useRef<TextInput>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const matchesQuery = (place: Place, text: string) => {
     const q = text.trim().toLowerCase();
@@ -63,9 +76,16 @@ export function MapScreen() {
       (!activeFilter || hasFeature(place, activeFilter)),
   );
 
-  const activePlaceId = params.place ?? tappedPlaceId ?? (visiblePlaces[0]?.id ?? null);
-  const activePlace = visiblePlaces.find((place) => place.id === activePlaceId) ?? null;
+  // Selection priority: explicit pick (pin tap / search) → route param → first visible match.
+  const activePlace =
+    visiblePlaces.find((place) => place.id === selectedPlaceId) ??
+    visiblePlaces.find((place) => place.id === routePlaceId) ??
+    visiblePlaces[0] ??
+    null;
+  const activePlaceId = activePlace?.id ?? null;
   const mapHeight = Math.max(240, height - insets.top - insets.bottom - 68);
+  // Camera offset (px): shifts the map center DOWN so the focused pin sits above the bottom card.
+  const pinFocusOffsetY = Math.round(mapHeight / 4.5);
 
   const recenterOnUser = () => {
     (async () => {
@@ -74,7 +94,7 @@ export function MapScreen() {
         if (status !== 'granted') return;
         const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         setUserLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-        setTappedPlaceId(null);
+        setSelectedPlaceId(null);
         mapRef.current?.recenter();
       } catch {
         // location unavailable — keep the map where it is
@@ -82,12 +102,37 @@ export function MapScreen() {
     })();
   };
 
+  // Pin taps arrive as raw ids over the bridge; resolve and focus them like a search pick.
+  const selectPlaceById = (id: string) => {
+    const place = visiblePlaces.find((item) => item.id === id);
+    if (!place) return;
+    selectPlace(place);
+  };
+
+  const selectPlace = (place: Place) => {
+    setSelectedPlaceId(place.id);
+    setQuery(place.name);
+    setShowSuggestions(false);
+    searchInputRef.current?.blur();
+    // Google-Maps-style: always drop the camera onto the pin, even if it was already selected.
+    mapRef.current?.focusPin(place.id, pinFocusOffsetY);
+  };
+
+  const submitSearch = () => {
+    const exact = visiblePlaces.find((place) => place.name.toLowerCase() === query.trim().toLowerCase());
+    if (exact || visiblePlaces[0]) selectPlace((exact ?? visiblePlaces[0]) as Place);
+    else {
+      setShowSuggestions(false);
+      searchInputRef.current?.blur();
+    }
+  };
+
   return (
     <View style={styles.mapSafe}>
       {/* Map viewport */}
       <View style={[styles.mapViewport, { height: mapHeight }]}>
         {!error && loading && places.length === 0 ? <LoadingState label="Loading facilities…" /> : null}
-        {!error && !loading && visiblePlaces.length > 0 ? (
+        {!error && !loading && places.length > 0 ? (
           <OSMMap
             ref={mapRef}
             pins={visiblePlaces.map((place) => ({ id: place.id, latitude: place.latitude, longitude: place.longitude, title: place.name, color: M3.primaryContainer }))}
@@ -95,8 +140,9 @@ export function MapScreen() {
             bounds={SAN_ISIDRO_BOUNDS}
             activePinId={activePlaceId}
             userLocation={userLocation}
+            focusOffsetY={pinFocusOffsetY}
             height={mapHeight}
-            onPinPress={(id) => setTappedPlaceId(id)}
+            onPinPress={(id) => selectPlaceById(id)}
           />
         ) : null}
 
@@ -114,23 +160,37 @@ export function MapScreen() {
         <View style={styles.mapSearchBar} pointerEvents="box-none">
           <AppIcon name="magnify" size={20} color={M3.secondary} />
           <TextInput
+            ref={searchInputRef}
             style={styles.mapSearchInput}
             placeholder="Search hospitals, clinics, municipal offices..."
             placeholderTextColor={M3.secondary}
             value={query}
+            returnKeyType="search"
             onChangeText={(text) => {
               setQuery(text);
-              setTappedPlaceId(null);
+              setShowSuggestions(text.trim().length > 0);
             }}
+            onFocus={() => {
+              if (query.trim().length > 0) setShowSuggestions(true);
+            }}
+            onSubmitEditing={submitSearch}
             accessibilityLabel="Search accessible places"
           />
           {query.length > 0 ? (
-            <Pressable onPress={() => setQuery('')} accessibilityLabel="Clear search" hitSlop={8}>
+            <Pressable
+              onPress={() => {
+                setQuery('');
+                setShowSuggestions(false);
+              }}
+              accessibilityLabel="Clear search"
+              hitSlop={8}
+            >
               <AppIcon name="close-circle" size={18} color={M3.secondary} />
             </Pressable>
           ) : null}
         </View>
 
+<<<<<<< HEAD
         {/* Filter chip row using the same accessibility buttons as the home screen */}
         <View style={styles.mapFilterRow} pointerEvents="box-none">
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapFilterRowInner}>
@@ -155,6 +215,56 @@ export function MapScreen() {
             })}
           </ScrollView>
         </View>
+=======
+        {/* Search suggestions: picking one flies the map and swaps the card */}
+        {showSuggestions && query.trim().length > 0 && visiblePlaces.length > 0 ? (
+          <View style={styles.mapSuggestions} pointerEvents="box-none">
+            {visiblePlaces.slice(0, 5).map((place, index, list) => (
+              <Pressable
+                key={place.id}
+                style={[
+                  styles.mapSuggestionRow,
+                  index < list.length - 1 && styles.mapSuggestionDivider,
+                  place.id === activePlaceId && styles.mapSuggestionRowActive,
+                ]}
+                onPress={() => selectPlace(place)}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${place.name} on the map`}
+              >
+                <AppIcon name={categoryIcon[place.category]} size={18} color={M3.secondary} />
+                <View style={styles.mapSuggestionText}>
+                  <Text style={styles.mapSuggestionName} numberOfLines={1}>{place.name}</Text>
+                  <Text style={styles.mapSuggestionCategory} numberOfLines={1}>{homeCategoryLabel[place.category]}</Text>
+                </View>
+                <AppIcon name="arrow-right" size={14} color={M3.secondary} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Filter chip row (visible when a query or ramp filter is active) */}
+        {!showSuggestions && (query.trim().length > 0 || activeFilter === 'ramp') ? (
+          <View style={styles.mapFilterRow} pointerEvents="box-none">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapFilterRowInner}>
+              {nearbyChips.map((chip) => {
+                const isActive = chip.type === null ? activeFilter === null : activeFilter === chip.type;
+                return (
+                  <Pressable
+                    key={chip.label}
+                    style={[styles.mapFilterChip, isActive && styles.mapFilterChipActive]}
+                    onPress={() => setActiveFilter(chip.type)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Filter by ${chip.label}`}
+                  >
+                    <View style={[styles.mapFilterDot, { backgroundColor: isActive ? M3.onPrimary : chip.dot }]} />
+                    <Text style={[styles.mapFilterChipText, isActive && styles.mapFilterChipTextActive]}>{chip.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+>>>>>>> 2f219fd7914d149e7e7b43591175db91438af942
 
         {/* Top-right controls (prototype layout) */}
         <View style={styles.mapControls}>
@@ -270,6 +380,29 @@ const styles = StyleSheet.create({
     zIndex: 15,
   },
   mapSearchInput: { flex: 1, minWidth: 0, color: M3.onSurface, fontSize: T['body-sm'], lineHeight: 18, paddingVertical: 0 },
+  mapSuggestions: {
+    position: 'absolute',
+    top: 74,
+    left: 16,
+    right: 88,
+    zIndex: 16,
+    borderRadius: 14,
+    backgroundColor: withAlpha(M3.surfaceContainerLowest, 0.97),
+    borderWidth: 1,
+    borderColor: withAlpha(M3.outlineVariant, 0.4),
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  mapSuggestionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  mapSuggestionRowActive: { backgroundColor: withAlpha(M3.primaryContainer, 0.25) },
+  mapSuggestionDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: withAlpha(M3.outlineVariant, 0.4) },
+  mapSuggestionText: { flex: 1, minWidth: 0 },
+  mapSuggestionName: { color: M3.onSurface, fontSize: T['body-sm'], lineHeight: 18, fontWeight: '600' },
+  mapSuggestionCategory: { color: M3.secondary, fontSize: T['label-sm'], lineHeight: 14 },
   mapFilterRow: {
     position: 'absolute',
     top: 88,

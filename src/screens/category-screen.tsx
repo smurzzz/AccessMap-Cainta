@@ -13,7 +13,7 @@ import EmptyState from '@/components/ui/empty-state';
 import LoadingState from '@/components/ui/loading-state';
 
 export function CategoryScreen() {
-  const { places, loading, error } = usePlaces();
+  const { places, loading, error, reload } = usePlaces();
   const countFor = (category: PlaceCategory) => places.filter((place) => place.category === category).length;
   const essential: PlaceCategory[] = ['hospital', 'health_center', 'government'];
   const secondary: PlaceCategory[] = ['school', 'mall', 'church', 'park'];
@@ -24,7 +24,19 @@ export function CategoryScreen() {
       <Text style={styles.screenTitle}>Browse Facilities by Category</Text>
       <Text style={styles.body}>Select a category to view accessible entrances, ramps, restrooms, and parking.</Text>
       <SearchBar placeholder="Search facility types, ramps, services" />
-      {error ? <EmptyState title="Could not load categories" message={error} /> : null}
+      {error ? (
+        <View>
+          <EmptyState title="Could not load categories" message={error} />
+          <Pressable
+            style={styles.categoryRetryBtn}
+            onPress={reload}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading categories"
+          >
+            <Text style={styles.categoryRetryText}>↻  Try Again</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {!error && loading ? <LoadingState label="Loading categories…" /> : null}
       {!error && !loading && places.length === 0 ? <EmptyState message="No facilities are registered yet. Check back soon." /> : null}
       <Text style={styles.sectionTitle}>● Essential Public Services</Text>
@@ -56,4 +68,6 @@ const styles = StyleSheet.create({
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   categoryCard: { backgroundColor: C.card, borderRadius: 12, padding: 16, minHeight: 126, flexBasis: '47%', flexGrow: 1, gap: 10, borderWidth: 1, borderColor: C.line },
   categoryIcon: { color: C.green, fontSize: T['icon-lg'] },
+  categoryRetryBtn: { alignSelf: 'center', marginTop: 4, marginBottom: 16, backgroundColor: C.mint, paddingHorizontal: 20, minHeight: 48, justifyContent: 'center', borderRadius: 10 },
+  categoryRetryText: { color: C.green, fontSize: T['link-md'], lineHeight: 18, fontWeight: '800' },
 });

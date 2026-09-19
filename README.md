@@ -1,56 +1,65 @@
-# Welcome to your Expo app 👋
+# AccessMap — Cainta
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+An accessibility directory app for Barangay San Isidro, Cainta, Rizal: find hospitals, health centers, government offices, schools, and parks — with admin-verified accessibility information (ramps, accessible restrooms, parking, entrances, elevators) and one-shot walking directions.
 
-## Get started
+Built for a thesis presentation. Mobile-first (Android), with a web build also available.
 
-1. Install dependencies
+## Tech stack
 
-   ```bash
-   npm install
-   ```
+| Layer | Choice |
+|---|---|
+| App framework | Expo (SDK 57) + React Native + TypeScript + Expo Router |
+| Styling | NativeWind (Tailwind) over a locked design-token system (`src/constants/design-tokens.ts`, `docs/DESIGN.md`) |
+| Database | Supabase (Postgres) with Row Level Security — public read, admin-only write |
+| Auth | Clerk (`@clerk/clerk-expo`), Google sign-in only |
+| Maps | WebView + Leaflet over OSM data (Stadia Alidade Smooth tiles, CARTO fallback) |
+| Directions | OpenRouteService (key optional) with automatic keyless OSRM fallback |
+| Builds | EAS Build (`eas.json`) — Android preview APK |
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Getting started
 
 ```bash
-npm run reset-project
+npm install
+cp .env.example .env   # then fill in the real values
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Open on a phone with **Expo Go** (scan the QR code), on an Android emulator, or in a browser (`w`).
 
-### Other setup steps
+### Environment variables
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+All are read from `.env` (see `.env.example`). Only `EXPO_PUBLIC_*` vars are bundled into client builds; the same four keys are configured in EAS for cloud builds (`eas env`).
 
-## Learn more
+| Variable | Used for | Required |
+|---|---|---|
+| `EXPO_PUBLIC_SUPABASE_URL` | Database connection | yes |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Database access (RLS applies) | yes |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | Google sign-in | yes |
+| `EXPO_PUBLIC_ORS_API_KEY` | Pedestrian routing quality | no — falls back to free keyless OSRM |
+| `EXPO_PUBLIC_STADIA_API_KEY` | Basemap tiles | no — falls back to CARTO Voyager |
 
-To learn more about developing your project with Expo, look at the following resources:
+## Database
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Schema and RLS live in `supabase/migrations/`; demo data (12 San Isidro places + accessibility features) in `supabase/seed.sql`. Run both in the Supabase SQL editor.
 
-## Join the community
+## Installing the Android APK
 
-Join our community of developers creating universal apps.
+The presentation build is produced by EAS:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+eas build --platform android --profile preview   # installable .apk
+eas build --platform android --profile production # Play-store .aab
+```
+
+Download the latest APK from the [EAS builds dashboard](https://expo.dev/accounts/henry26/projects/accessMap/builds), then on the device allow **Install unknown apps** for the browser and install.
+
+## Documentation
+
+- `docs/demo-guide.md` — thesis presentation run-of-show and device checklist
+- `docs/phased-build-plan.md` — the phased plan this project was built against
+- `docs/progress-tracker.md` — what is done and what remains
+- `docs/architecture.md`, `docs/DESIGN.md`, `docs/code-standards.md` — source-of-truth docs
+
+## Scope notes
+
+Deliberately out of scope (per the project rules): accessibility scoring/percentages, community reports/reviews, emergency calling, and live turn-by-turn navigation. Accessibility status is binary and admin-verified.

@@ -44,6 +44,8 @@ export type MapHtmlState = {
   bounds?: OSM_Bounds | null;
   activePinId?: string | null;
   userLocation?: OSM_Point | null;
+  /** Vertical camera offset (px) so the focused pin sits above bottom UI, Google-Maps-style. */
+  focusOffsetY?: number | null;
 };
 
 /** JSON.stringify that is safe to embed inside a <script> block. */
@@ -73,6 +75,7 @@ export function buildMapHtml(state: MapHtmlState): string {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
 <style>
   html, body, #map { height: 100%; margin: 0; padding: 0; background: #eff4ff; }
+<<<<<<< HEAD
   .amx-pin-wrap {
     position: relative; width: 30px; height: 36px;
     filter: drop-shadow(0 4px 8px rgba(0,0,0,.22)); transition: transform .18s ease;
@@ -81,6 +84,14 @@ export function buildMapHtml(state: MapHtmlState): string {
   .amx-pin-svg {
     display: block; width: 100%; height: 100%;
   }
+=======
+  .amx-pin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #ffffff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,0,0,.35); transition: all .18s ease; }
+  .amx-pin-active { width: 28px; height: 28px; box-shadow: 0 0 0 7px rgba(30,64,255,.22), 0 2px 10px rgba(0,0,0,.4); }
+  .amx-teardrop { position: relative; width: 28px; height: 34px; animation: amx-drop .35s cubic-bezier(.2,1.4,.5,1); }
+  .amx-teardrop::before { content: ''; position: absolute; top: 0; left: 0; width: 28px; height: 28px; background: var(--pin-c, #1e40ff); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #ffffff; box-sizing: border-box; box-shadow: 0 3px 8px rgba(0,0,0,.35); }
+  .amx-teardrop::after { content: ''; position: absolute; top: 9px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: #ffffff; }
+  @keyframes amx-drop { 0% { transform: translateY(-14px); opacity: 0; } 60% { opacity: 1; } 100% { transform: translateY(0); opacity: 1; } }
+>>>>>>> 2f219fd7914d149e7e7b43591175db91438af942
   .amx-user-wrap { position: relative; width: 14px; height: 14px; }
   .amx-user-halo { position: absolute; inset: 0; border-radius: 50%; background: rgba(30,64,255,.30); animation: amx-pulse 1.8s ease-out infinite; }
   .amx-user-core { position: absolute; inset: 0; border-radius: 50%; background: #1e40ff; border: 3px solid #ffffff; box-sizing: border-box; box-shadow: 0 0 0 2px rgba(30,64,255,.45); }
@@ -103,6 +114,7 @@ export function buildMapHtml(state: MapHtmlState): string {
   var __maxArea = ${json(area)};
   var __activePinId = ${json(state.activePinId ?? null)};
   var __user = ${json(state.userLocation ?? null)};
+  var __offsetY = ${json(state.focusOffsetY ?? null)} || 0;
 
   var map = L.map('map', { zoomControl: false, scrollWheelZoom: true, attributionControl: true, maxBoundsViscosity: 0.8 })
     .setView([${CENTER_LAT}, ${CENTER_LNG}], 14);
@@ -141,7 +153,9 @@ export function buildMapHtml(state: MapHtmlState): string {
   function postPin(id) { if (id) { postOut({ type: 'pin', id: id }); } }
   function postReady() { postOut({ type: 'ready' }); }
 
+  var DEFAULT_PIN_COLOR = '#1e40ff';
   function pinIcon(color, active) {
+<<<<<<< HEAD
     var size = active ? 38 : 32;
     return L.divIcon({
       className: '',
@@ -149,12 +163,30 @@ export function buildMapHtml(state: MapHtmlState): string {
       iconSize: [size, size + 8],
       iconAnchor: [size / 2, size + 4],
       popupAnchor: [0, -(size + 6) / 2]
+=======
+    var c = color || DEFAULT_PIN_COLOR;
+    if (active) {
+      return L.divIcon({
+        className: '',
+        html: '<div class="amx-teardrop" style="--pin-c:' + c + '"></div>',
+        iconSize: [28, 34],
+        iconAnchor: [14, 34],
+        popupAnchor: [0, -36]
+      });
+    }
+    return L.divIcon({
+      className: '',
+      html: '<div class="amx-pin" style="background:' + c + '"></div>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+      popupAnchor: [0, -11]
+>>>>>>> 2f219fd7914d149e7e7b43591175db91438af942
     });
   }
 
   function popupHtml(pin) {
     return '<div class="amx-popup-card">' +
-      '<div class="amx-popup-bar" style="background:' + pin.color + '"></div>' +
+      '<div class="amx-popup-bar" style="background:' + (pin.color || DEFAULT_PIN_COLOR) + '"></div>' +
       '<div><div class="amx-popup-title">' + escapeHtml(pin.title) + '</div>' +
       '<div class="amx-popup-sub">Verified accessibility info</div></div></div>';
   }
@@ -265,6 +297,19 @@ export function buildMapHtml(state: MapHtmlState): string {
     else { map.setView([${CENTER_LAT}, ${CENTER_LNG}], 14); }
   }
 
+  // Camera helper: shifts the center DOWN by offsetY so the focused pin lands ABOVE bottom UI (Google-Maps-style).
+  function flyToOffset(latlng, zoom, offsetY, duration) {
+    var target = L.latLng(latlng[0], latlng[1]);
+    var dy = offsetY || 0;
+    if (dy) {
+      var point = map.project(target, zoom).add([0, dy]);
+      target = map.unproject(point, zoom);
+    }
+    map.flyTo(target, zoom, { duration: duration || 0.6 });
+  }
+
+  var __lastTargetKey = null;
+
   window.__mapBridge = {
     apply: function (state) {
       if (!state) { return; }
@@ -278,8 +323,24 @@ export function buildMapHtml(state: MapHtmlState): string {
         if (pin) { target = [pin.latitude, pin.longitude]; }
       }
       if (!target && state.focus) { target = [state.focus.latitude, state.focus.longitude]; }
-      if (target) { map.flyTo(target, Math.max(map.getZoom(), 16), { duration: 0.6 }); }
-      if (state.fitAll) { fitAll(); }
+      if (target) {
+        // Fly only when the target CHANGED — identical re-applies (e.g. unrelated prop updates)
+        // must not yank the user's map back while they are panning.
+        var targetKey = target[0].toFixed(5) + ',' + target[1].toFixed(5);
+        if (targetKey !== __lastTargetKey) {
+          __lastTargetKey = targetKey;
+          flyToOffset(target, Math.max(map.getZoom(), 16), __offsetY, 0.6);
+        }
+      }
+      if (state.fitAll) { fitAll(); __lastTargetKey = null; }
+    },
+    focusPin: function (id, offsetY) {
+      setActivePin(id);
+      var pin = findPin(id);
+      if (!pin) { return; }
+      var dy = (typeof offsetY === 'number') ? offsetY : __offsetY;
+      __lastTargetKey = pin.latitude.toFixed(5) + ',' + pin.longitude.toFixed(5);
+      flyToOffset([pin.latitude, pin.longitude], 16, dy, 0.6);
     },
     zoomIn: function () { map.zoomIn(); },
     zoomOut: function () { map.zoomOut(); },
@@ -294,15 +355,22 @@ export function buildMapHtml(state: MapHtmlState): string {
       var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
       if (!data) { return; }
       if (data.type === 'amx-apply' && data.payload) { window.__mapBridge.apply(data.payload); }
-      else if (data.type === 'amx-cmd' && typeof window.__mapBridge[data.payload] === 'function') { window.__mapBridge[data.payload](); }
+      else if (data.type === 'amx-cmd' && typeof window.__mapBridge[data.payload] === 'function') { window.__mapBridge[data.payload].apply(null, data.args || []); }
     } catch (err) { /* ignore malformed messages */ }
   });
 
   renderMarkers();
   renderRoute();
   renderUser(__user);
-  if (__focus) { map.setView([__focus.latitude, __focus.longitude], 16); }
-  else { fitAll(); }
+  if (__focus) {
+    __lastTargetKey = __focus.latitude.toFixed(5) + ',' + __focus.longitude.toFixed(5);
+    var center = [__focus.latitude, __focus.longitude];
+    if (__offsetY) {
+      var p0 = map.project(center, 16).add([0, __offsetY]);
+      center = map.unproject(p0, 16);
+    }
+    map.setView(center, 16);
+  } else { fitAll(); }
   postReady();
 <\/script>
 </body>

@@ -16,7 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 export function PlaceDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { place, loading, error } = usePlace(id);
+  const { place, loading, error, reload } = usePlace(id);
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { savedIds: savedPlaceIds, toggleSaved: toggleSavedPlace } = useSavedPlaces();
@@ -41,7 +41,19 @@ export function PlaceDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.detailSafe} edges={['top', 'bottom']}>
-      {error ? <EmptyState title="Could not load this facility" message={error} /> : null}
+      {error ? (
+        <View>
+          <EmptyState title="Could not load this facility" message={error} />
+          <Pressable
+            style={styles.detailRetryBtn}
+            onPress={reload}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading facility details"
+          >
+            <Text style={styles.detailRetryText}>↻  Try Again</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {!error && loading ? <LoadingState label="Loading facility details…" /> : null}
       {!error && !loading && !place ? <EmptyState message="This facility could not be found." /> : null}
 
@@ -337,6 +349,8 @@ const styles = StyleSheet.create({
   detailSectionSub: { color: M3.secondary, fontSize: T['body-sm'], lineHeight: 18, flexShrink: 1 },
   detailMapCard: { position: 'relative', borderRadius: 16, overflow: 'hidden', backgroundColor: M3.surfaceContainer },
   detailMapMock: { height: 176, backgroundColor: C.mapSurface, position: 'relative', overflow: 'hidden' },
+  detailRetryBtn: { alignSelf: 'center', marginTop: 4, marginBottom: 16, backgroundColor: C.mint, paddingHorizontal: 20, minHeight: 48, justifyContent: 'center', borderRadius: 10 },
+  detailRetryText: { color: C.green, fontSize: T['link-md'], lineHeight: 18, fontWeight: '800' },
   mapRoad: { position: 'absolute', top: 35, left: 80, color: C.mapLabel, fontSize: T['label-md'], fontWeight: '700', transform: [{ rotate: '-15deg' }] },
   mapPin: { width: 42, height: 42, borderRadius: 22, backgroundColor: C.green, borderWidth: 3, borderColor: C.white, alignItems: 'center', justifyContent: 'center', position: 'absolute' },
   detailMapBadge: {

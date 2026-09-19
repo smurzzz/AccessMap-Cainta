@@ -14,7 +14,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export function ExploreScreen() {
   const [activeCategory, setActiveCategory] = useState<PlaceCategory | null>(null);
-  const { places, loading, error } = usePlaces(activeCategory ?? undefined);
+  const { places, loading, error, reload } = usePlaces(activeCategory ?? undefined);
   const { filters } = useFilters();
   const categories: { label: string; value: PlaceCategory | null }[] = [
     { label: 'All', value: null },
@@ -65,7 +65,19 @@ return (
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.exploreChips}>
         {categories.map((category) => <Pressable key={category.label} onPress={() => setActiveCategory(category.value)} style={[styles.exploreChip, activeCategory === category.value && styles.exploreChipActive]} accessibilityRole="button" accessibilityState={{ selected: activeCategory === category.value }}><Text style={[styles.exploreChipText, activeCategory === category.value && styles.exploreChipTextActive]}>{category.label}</Text></Pressable>)}
       </ScrollView>
-      {error ? <EmptyState title="Could not load facilities" message={error} /> : null}
+      {error ? (
+        <View>
+          <EmptyState title="Could not load facilities" message={error} />
+          <Pressable
+            style={styles.exploreRetryBtn}
+            onPress={reload}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading facilities"
+          >
+            <Text style={styles.exploreRetryText}>↻  Try Again</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {loading ? <LoadingState label="Finding places…" /> : null}
       {!loading && !error && filteredPlaces.length === 0 ? <EmptyState message="No facilities match your filters." /> : null}
       {!loading && !error ? filteredPlaces.map((place) => <PlaceCard key={place.id} place={place} featured />) : null}
@@ -95,4 +107,6 @@ const styles = StyleSheet.create({
   exploreChipActive: { backgroundColor: C.navy, borderColor: C.navy },
   exploreChipText: { color: C.muted, fontSize: T['label-sm'] },
   exploreChipTextActive: { color: C.white },
+  exploreRetryBtn: { alignSelf: 'center', marginTop: 4, marginBottom: 16, backgroundColor: C.navy, paddingHorizontal: 20, minHeight: 48, justifyContent: 'center', borderRadius: 10 },
+  exploreRetryText: { color: C.white, fontSize: T['link-md'], lineHeight: 18, fontWeight: '600' },
 });
