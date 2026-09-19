@@ -1,9 +1,9 @@
+import { AppIcon } from '@/components/ui/app-icon';
+import { DesignColors as C, DesignType as T } from '@/constants/design-tokens';
+import { photos } from '@/lib/display';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { AppIcon } from '@/components/ui/app-icon';
-import { photos } from '@/lib/display';
-import { DesignColors as C, DesignType as T } from '@/constants/design-tokens';
 
 function Header({ title = 'Home', back }: { title?: string; back?: boolean }) {
   return (

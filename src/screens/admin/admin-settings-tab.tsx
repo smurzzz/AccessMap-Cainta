@@ -1,16 +1,16 @@
 import { buildFacilityCsv } from '@/components/features/facility-csv';
 import { AppIcon } from '@/components/ui/app-icon';
+import { M3 } from '@/constants/design-tokens';
 import { useRole } from '@/contexts/role-context';
 import { usePlaces } from '@/hooks/usePlaces';
-import { photos , withAlpha } from '@/lib/display';
-import { M3 } from '@/constants/design-tokens';
-import { useClerk , useUser } from '@clerk/clerk-expo';
+import { photos, withAlpha } from '@/lib/display';
+import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as FileSystem from 'expo-file-system';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import React, { useEffect, useState , useRef } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View , Platform } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export function AdminSettingsTab() {
   const { user } = useUser();

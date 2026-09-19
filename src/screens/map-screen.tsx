@@ -5,7 +5,7 @@ import LoadingState from '@/components/ui/loading-state';
 import { M3, DesignType as T } from '@/constants/design-tokens';
 import { useFilters } from '@/contexts/filter-context';
 import { usePlaces } from '@/hooks/usePlaces';
-import { availableFeatureTypes, featureShortLabels, haversineMeters, homeCategoryLabel, matchesFilters, nearbyChips, photoSource, tabsRoute, withAlpha } from '@/lib/display';
+import { availableFeatureTypes, featureIcon, featureShortLabels, haversineMeters, homeCategoryLabel, matchesFilters, nearbyChips, photoSource, tabsRoute, withAlpha } from '@/lib/display';
 import { SAN_ISIDRO_BOUNDS, formatDistance } from '@/lib/maps';
 import { useSavedPlaces } from '@/lib/saved-places';
 import type { FeatureType, Place } from '@/types';
@@ -25,33 +25,42 @@ export function MapScreen() {
   const { savedIds, toggleSaved } = useSavedPlaces();
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [query, setQuery] = useState('');
-  const [accessibleOnly, setAccessibleOnly] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FeatureType | null>(null);
   const mapRef = useRef<OSMMapHandle>(null);
 
   const matchesQuery = (place: Place, text: string) => {
     const q = text.trim().toLowerCase();
     if (!q) return true;
+
+    const categoryAliases: Record<Place['category'], string[]> = {
+      hospital: ['hospital', 'hospitals', 'clinic', 'clinics', 'medical center', 'medical centers', 'health facility'],
+      health_center: ['health center', 'health centers', 'clinic', 'clinics', 'medical', 'medical center'],
+      government: ['government', 'government office', 'municipal', 'office', 'city hall'],
+      school: ['school', 'schools', 'college', 'education'],
+      mall: ['mall', 'malls', 'shopping', 'store', 'stores'],
+      church: ['church', 'churches', 'parish', 'temple'],
+      park: ['park', 'parks', 'garden', 'green space'],
+    };
+
+    const categoryText = homeCategoryLabel[place.category].toLowerCase();
+    const aliases = [categoryText, ...categoryAliases[place.category]];
+
     return (
       place.name.toLowerCase().includes(q) ||
       (place.address ?? '').toLowerCase().includes(q) ||
-      homeCategoryLabel[place.category].toLowerCase().includes(q)
+      aliases.some((alias) => alias.includes(q) || q.includes(alias))
     );
   };
 
   const hasFeature = (place: Place, type: FeatureType) =>
     (place.accessibility_features ?? []).some((feature) => feature.feature_type === type && feature.status === 'available');
 
-  const isFullyAccessible = (place: Place) =>
-    hasFeature(place, 'entrance') && availableFeatureTypes(place).length >= 3;
-
   const { filters } = useFilters();
   const visiblePlaces = places.filter(
     (place) =>
       matchesQuery(place, query) &&
       matchesFilters(place, filters, userLocation) &&
-      (!activeFilter || hasFeature(place, activeFilter)) &&
-      (!accessibleOnly || isFullyAccessible(place)),
+      (!activeFilter || hasFeature(place, activeFilter)),
   );
 
   const activePlaceId = params.place ?? tappedPlaceId ?? (visiblePlaces[0]?.id ?? null);
@@ -81,7 +90,7 @@ export function MapScreen() {
         {!error && !loading && visiblePlaces.length > 0 ? (
           <OSMMap
             ref={mapRef}
-            pins={visiblePlaces.map((place) => ({ id: place.id, latitude: place.latitude, longitude: place.longitude, title: place.name }))}
+            pins={visiblePlaces.map((place) => ({ id: place.id, latitude: place.latitude, longitude: place.longitude, title: place.name, color: M3.primaryContainer }))}
             focus={activePlace ? { latitude: activePlace.latitude, longitude: activePlace.longitude } : undefined}
             bounds={SAN_ISIDRO_BOUNDS}
             activePinId={activePlaceId}
@@ -119,39 +128,33 @@ export function MapScreen() {
             <Pressable onPress={() => setQuery('')} accessibilityLabel="Clear search" hitSlop={8}>
               <AppIcon name="close-circle" size={18} color={M3.secondary} />
             </Pressable>
-          ) : (
-            <Pressable
-              onPress={() => setActiveFilter(activeFilter === 'ramp' ? null : 'ramp')}
-              accessibilityLabel="Filter places with ramps"
-              hitSlop={8}
-            >
-              <AppIcon name="tune" size={18} color={activeFilter === 'ramp' ? M3.primaryContainer : M3.secondary} />
-            </Pressable>
-          )}
+          ) : null}
         </View>
 
-        {/* Filter chip row (visible when a query or ramp filter is active) */}
-        {query.trim().length > 0 || activeFilter === 'ramp' ? (
-          <View style={styles.mapFilterRow} pointerEvents="box-none">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapFilterRowInner}>
-              {nearbyChips.map((chip) => {
-                const isActive = chip.type === null ? activeFilter === null : activeFilter === chip.type;
-                return (
-                  <Pressable
-                    key={chip.label}
-                    style={[styles.mapFilterChip, isActive && styles.mapFilterChipActive]}
-                    onPress={() => setActiveFilter(chip.type)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Filter by ${chip.label}`}
-                  >
-                    <View style={[styles.mapFilterDot, { backgroundColor: isActive ? M3.onPrimary : chip.dot }]} />
-                    <Text style={[styles.mapFilterChipText, isActive && styles.mapFilterChipTextActive]}>{chip.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        ) : null}
+        {/* Filter chip row using the same accessibility buttons as the home screen */}
+        <View style={styles.mapFilterRow} pointerEvents="box-none">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mapFilterRowInner}>
+            {nearbyChips.map((chip) => {
+              const isActive = chip.type === null ? activeFilter === null : activeFilter === chip.type;
+              return (
+                <Pressable
+                  key={chip.label}
+                  style={[styles.mapFilterChip, isActive && styles.mapFilterChipActive]}
+                  onPress={() => setActiveFilter(chip.type)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter by ${chip.label}`}
+                >
+                  <AppIcon
+                    name={chip.type ? featureIcon[chip.type] : 'format-list-bulleted'}
+                    size={15}
+                    color={isActive ? M3.onPrimary : chip.dot}
+                  />
+                  <Text style={[styles.mapFilterChipText, isActive && styles.mapFilterChipTextActive]}>{chip.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
 
         {/* Top-right controls (prototype layout) */}
         <View style={styles.mapControls}>
@@ -166,16 +169,6 @@ export function MapScreen() {
           </View>
           <Pressable style={styles.mapControlReticle} accessibilityLabel="Recenter Current Location" accessibilityRole="button" onPress={recenterOnUser}>
             <AppIcon name="crosshairs-gps" size={22} color={M3.primaryContainer} />
-          </Pressable>
-          <Pressable
-            style={[styles.mapControlLayer, accessibleOnly && styles.mapControlLayerActive]}
-            accessibilityLabel="Toggle fully-accessible places only"
-            accessibilityRole="button"
-            accessibilityState={{ selected: accessibleOnly }}
-            hitSlop={4}
-            onPress={() => setAccessibleOnly((value) => !value)}
-          >
-            <AppIcon name="human-wheelchair" size={20} color={accessibleOnly ? M3.primaryContainer : M3.secondary} />
           </Pressable>
         </View>
 
@@ -257,7 +250,7 @@ const styles = StyleSheet.create({
   mapNoResultsText: { color: M3.secondary, fontSize: T['body-sm'], lineHeight: 18, textAlign: 'center' },
   mapSearchBar: {
     position: 'absolute',
-    top: 30,
+    top: 44,
     left: 16,
     right: 88,
     flexDirection: 'row',
@@ -279,7 +272,7 @@ const styles = StyleSheet.create({
   mapSearchInput: { flex: 1, minWidth: 0, color: M3.onSurface, fontSize: T['body-sm'], lineHeight: 18, paddingVertical: 0 },
   mapFilterRow: {
     position: 'absolute',
-    top: 74,
+    top: 88,
     left: 16,
     right: 88,
     zIndex: 14,
@@ -308,7 +301,7 @@ const styles = StyleSheet.create({
   mapFilterDot: { width: 6, height: 6, borderRadius: 3 },
   mapFilterChipText: { color: M3.onSurface, fontSize: T['label-sm'], lineHeight: 14, fontWeight: '600' },
   mapFilterChipTextActive: { color: M3.onPrimary },
-  mapControls: { position: 'absolute', top: 30, right: 16, alignItems: 'center', gap: 8, zIndex: 20 },
+  mapControls: { position: 'absolute', top: 44, right: 16, alignItems: 'center', gap: 8, zIndex: 20 },
   mapZoomGroup: {
     backgroundColor: M3.surfaceContainerLowest,
     borderRadius: 12,
@@ -339,24 +332,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
-  },
-  mapControlLayer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: M3.surfaceContainerLowest,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  mapControlLayerActive: {
-    backgroundColor: M3.surfaceContainer,
-    borderWidth: 1.5,
-    borderColor: M3.primaryContainer,
   },
   mapCard: {
     position: 'absolute',

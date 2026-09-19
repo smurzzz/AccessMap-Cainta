@@ -1,12 +1,11 @@
 import { AppIcon } from '@/components/ui/app-icon';
-import { withAlpha } from '@/lib/display';
-import { router } from 'expo-router';
-import React from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Image } from 'expo-image';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Svg, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { DesignType as T } from '@/constants/design-tokens';
+import { withAlpha } from '@/lib/display';
+import { Image } from 'expo-image';
+import { router } from 'expo-router';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
 
 export function SplashScreen() {
   const enter = () => router.replace('/onboarding');

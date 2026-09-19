@@ -1,12 +1,12 @@
 import GoogleLogo from '@/components/features/google-logo';
 import { AppIcon } from '@/components/ui/app-icon';
-import { DesignColors as C, DesignType as T, M3 } from '@/constants/design-tokens';
+import { DesignColors as C, M3, DesignType as T } from '@/constants/design-tokens';
 import { useSSO } from '@clerk/clerk-expo';
-import * as Linking from 'expo-linking';
-import React, { useState } from 'react';
-import { Pressable, Text, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import * as Linking from 'expo-linking';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export function LoginScreen() {
   const { startSSOFlow } = useSSO();

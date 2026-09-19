@@ -73,8 +73,14 @@ export function buildMapHtml(state: MapHtmlState): string {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
 <style>
   html, body, #map { height: 100%; margin: 0; padding: 0; background: #eff4ff; }
-  .amx-pin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #ffffff; box-sizing: border-box; box-shadow: 0 1px 4px rgba(0,0,0,.35); transition: all .18s ease; }
-  .amx-pin-active { width: 28px; height: 28px; box-shadow: 0 0 0 7px rgba(30,64,255,.22), 0 2px 10px rgba(0,0,0,.4); }
+  .amx-pin-wrap {
+    position: relative; width: 30px; height: 36px;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,.22)); transition: transform .18s ease;
+  }
+  .amx-pin-wrap.amx-pin-active { transform: scale(1.22); }
+  .amx-pin-svg {
+    display: block; width: 100%; height: 100%;
+  }
   .amx-user-wrap { position: relative; width: 14px; height: 14px; }
   .amx-user-halo { position: absolute; inset: 0; border-radius: 50%; background: rgba(30,64,255,.30); animation: amx-pulse 1.8s ease-out infinite; }
   .amx-user-core { position: absolute; inset: 0; border-radius: 50%; background: #1e40ff; border: 3px solid #ffffff; box-sizing: border-box; box-shadow: 0 0 0 2px rgba(30,64,255,.45); }
@@ -136,13 +142,13 @@ export function buildMapHtml(state: MapHtmlState): string {
   function postReady() { postOut({ type: 'ready' }); }
 
   function pinIcon(color, active) {
-    var size = active ? 28 : 18;
+    var size = active ? 38 : 32;
     return L.divIcon({
       className: '',
-      html: '<div class="amx-pin' + (active ? ' amx-pin-active' : '') + '" style="background:' + color + '"></div>',
-      iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2],
-      popupAnchor: [0, -size / 2 - 2]
+      html: '<div class="amx-pin-wrap' + (active ? ' amx-pin-active' : '') + '" style="--pin-color:' + color + ';"><svg class="amx-pin-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2.5C7.58 2.5 4 6.08 4 10.5c0 6.08 8 12.5 8 12.5s8-6.42 8-12.5C20 6.08 16.42 2.5 12 2.5zm0 13a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z" fill="var(--pin-color)"/><circle cx="12" cy="10.5" r="2.75" fill="#ffffff"/></svg></div>',
+      iconSize: [size, size + 8],
+      iconAnchor: [size / 2, size + 4],
+      popupAnchor: [0, -(size + 6) / 2]
     });
   }
 
